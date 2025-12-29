@@ -1,0 +1,34 @@
+name: Trading Simulation Cron
+
+on:
+  schedule:
+    # Run every 5 minutes during US market hours (9:30 AM - 4:00 PM EST)
+    # GitHub uses UTC, so 9:30 AM EST = 14:30 UTC, 4:00 PM EST = 21:00 UTC
+    - cron: '*/5 14-21 * * 1-5'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  run-simulation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Simulation Tick
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.APP_URL }}/api/simulation/tick" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+          if [ "$http_code" -ge 400 ]; then
+            echo "Request failed with status $http_code"
+            exit 1
+          fi
+
+      - name: Log Result
+        run: |
+          echo "Simulation tick completed at $(date -u)"
