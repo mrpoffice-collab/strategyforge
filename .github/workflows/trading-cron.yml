@@ -2,21 +2,29 @@ name: Trading Simulation Cron
 
 on:
   schedule:
-    # Run every 5 minutes during US market hours (9:30 AM - 4:00 PM EST)
-    # GitHub uses UTC, so 9:30 AM EST = 14:30 UTC, 4:00 PM EST = 21:00 UTC
-    - cron: '*/5 14-21 * * 1-5'
+    # Swing trading schedule - 3 checks per day during extended hours
+    # Pre-market: 8 AM EST (13:00 UTC)
+    # Mid-day: 12 PM EST (17:00 UTC)
+    # After-hours: 5 PM EST (22:00 UTC)
+    - cron: '0 13 * * 1-5'  # 8 AM EST
+    - cron: '0 17 * * 1-5'  # 12 PM EST
+    - cron: '0 22 * * 1-5'  # 5 PM EST
   workflow_dispatch: # Allow manual trigger
 
 jobs:
   run-simulation:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Trigger Simulation Tick
         run: |
+          echo "Starting simulation tick at $(date -u)"
+
           response=$(curl -s -w "\n%{http_code}" -X POST \
             "${{ secrets.APP_URL }}/api/simulation/tick" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --max-time 300)
 
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | sed '$d')
@@ -29,6 +37,4 @@ jobs:
             exit 1
           fi
 
-      - name: Log Result
-        run: |
-          echo "Simulation tick completed at $(date -u)"
+          echo "Simulation tick completed successfully"

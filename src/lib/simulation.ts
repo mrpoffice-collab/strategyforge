@@ -7,7 +7,7 @@ import {
   calculateBollingerBands,
   calculateSMA,
   calculateEMA,
-  ELIGIBLE_SYMBOLS,
+  getTradeableSymbols,
 } from './finnhub'
 
 interface EntryConditions {
@@ -366,8 +366,9 @@ export async function runSimulationTick(simulationId: string): Promise<{
 
     // Only open new positions if we have capital
     if (maxPositionValue >= 100) {
-      // Shuffle symbols to avoid bias
-      const shuffledSymbols = [...ELIGIBLE_SYMBOLS].sort(() => Math.random() - 0.5).slice(0, 20)
+      // Get all tradeable symbols and shuffle to avoid bias
+      const allSymbols = await getTradeableSymbols()
+      const shuffledSymbols = [...allSymbols].sort(() => Math.random() - 0.5).slice(0, 50)
 
       for (const symbol of shuffledSymbols) {
         // Check if we already have a position

@@ -31,6 +31,34 @@ interface CompanyProfile {
   marketCapitalization: number
 }
 
+interface StockSymbol {
+  symbol: string
+  description: string
+  type: string
+  displaySymbol: string
+}
+
+// Fetch ALL US stock symbols from Finnhub
+export async function getAllUSSymbols(): Promise<StockSymbol[]> {
+  try {
+    const response = await axios.get(`${BASE_URL}/stock/symbol`, {
+      params: {
+        exchange: 'US',
+        token: FINNHUB_API_KEY,
+      },
+    })
+    // Filter to common stocks only (no ETFs, warrants, etc.)
+    return response.data.filter((s: StockSymbol) =>
+      s.type === 'Common Stock' &&
+      !s.symbol.includes('.') &&  // No preferred shares
+      !s.symbol.includes('-')     // No special classes
+    )
+  } catch (error) {
+    console.error('Error fetching US symbols:', error)
+    return []
+  }
+}
+
 export async function getQuote(symbol: string): Promise<StockQuote | null> {
   try {
     const response = await axios.get(`${BASE_URL}/quote`, {
@@ -202,24 +230,33 @@ export function calculateSMA(prices: number[], period: number): number | null {
   return recentPrices.reduce((a, b) => a + b, 0) / period
 }
 
-// List of eligible stock symbols to scan (NYSE/NASDAQ stocks $25-$100 range)
-// This is a curated list of liquid mid-cap stocks
-export const ELIGIBLE_SYMBOLS = [
-  'AMD', 'PYPL', 'UBER', 'SNAP', 'SQ', 'ROKU', 'TWLO', 'NET', 'CRWD', 'DDOG',
-  'ZS', 'OKTA', 'MDB', 'SNOW', 'PLTR', 'PATH', 'DOCN', 'CFLT', 'GTLB', 'BILL',
-  'HUBS', 'WDAY', 'NOW', 'CRM', 'ADBE', 'PANW', 'FTNT', 'SPLK', 'ZM', 'DOCU',
-  'PINS', 'ETSY', 'SHOP', 'SPOT', 'LYFT', 'ABNB', 'DASH', 'RBLX', 'HOOD', 'COIN',
-  'AFRM', 'UPST', 'SOFI', 'LC', 'OPEN', 'CVNA', 'W', 'CHWY', 'PTON', 'RIVN',
-  'LCID', 'NIO', 'XPEV', 'LI', 'FSR', 'PLUG', 'FCEL', 'BLNK', 'CHPT', 'EVGO',
-  'F', 'GM', 'STLA', 'TSLA', 'RIVN', 'BA', 'UAL', 'DAL', 'LUV', 'AAL',
-  'CCL', 'RCL', 'NCLH', 'MAR', 'HLT', 'MGM', 'LVS', 'WYNN', 'CZR', 'PENN',
-  'DIS', 'NFLX', 'PARA', 'WBD', 'CMCSA', 'T', 'VZ', 'TMUS', 'CHTR', 'SIRI'
-]
+// Cache for all US symbols (refreshed periodically)
+let cachedSymbols: string[] = []
+let symbolsCacheTime = 0
+const SYMBOLS_CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
 
-// Get multiple quotes in parallel with rate limiting
+// Get all tradeable symbols (cached)
+export async function getTradeableSymbols(): Promise<string[]> {
+  const now = Date.now()
+
+  // Return cached if still valid
+  if (cachedSymbols.length > 0 && (now - symbolsCacheTime) < SYMBOLS_CACHE_TTL) {
+    return cachedSymbols
+  }
+
+  // Fetch fresh list
+  const allSymbols = await getAllUSSymbols()
+  cachedSymbols = allSymbols.map(s => s.symbol)
+  symbolsCacheTime = now
+
+  console.log(`Loaded ${cachedSymbols.length} US stock symbols`)
+  return cachedSymbols
+}
+
+// Get multiple quotes with rate limiting (1 per second = 60/min)
 export async function getMultipleQuotes(
   symbols: string[],
-  delayMs: number = 100
+  delayMs: number = 1000 // 1 second between calls = 60/min rate limit
 ): Promise<Map<string, StockQuote>> {
   const quotes = new Map<string, StockQuote>()
 
@@ -235,25 +272,74 @@ export async function getMultipleQuotes(
   return quotes
 }
 
-// Get eligible stocks in price range
-export async function getEligibleStocks(
+// Scan stocks in batches and find eligible ones
+export async function scanForEligibleStocks(
   minPrice: number = 25,
   maxPrice: number = 100,
-  maxStocks: number = 50
-): Promise<Array<{ symbol: string; price: number; change: number; changePercent: number }>> {
-  const quotes = await getMultipleQuotes(ELIGIBLE_SYMBOLS.slice(0, maxStocks))
+  batchSize: number = 50,
+  startIndex: number = 0
+): Promise<{
+  eligible: Array<{ symbol: string; price: number; change: number; changePercent: number }>
+  nextIndex: number
+  totalSymbols: number
+  scanned: number
+}> {
+  const allSymbols = await getTradeableSymbols()
+  const batch = allSymbols.slice(startIndex, startIndex + batchSize)
+
   const eligible: Array<{ symbol: string; price: number; change: number; changePercent: number }> = []
 
-  quotes.forEach((quote, symbol) => {
-    if (quote.c >= minPrice && quote.c <= maxPrice) {
+  for (const symbol of batch) {
+    const quote = await getQuote(symbol)
+    if (quote && quote.c >= minPrice && quote.c <= maxPrice) {
       eligible.push({
         symbol,
         price: quote.c,
-        change: quote.d,
-        changePercent: quote.dp,
+        change: quote.d || 0,
+        changePercent: quote.dp || 0,
       })
     }
-  })
+    // Rate limit
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+
+  const nextIndex = startIndex + batchSize >= allSymbols.length ? 0 : startIndex + batchSize
+
+  return {
+    eligible: eligible.sort((a, b) => b.changePercent - a.changePercent),
+    nextIndex,
+    totalSymbols: allSymbols.length,
+    scanned: batch.length,
+  }
+}
+
+// Quick scan of random sample for faster results
+export async function quickScanEligibleStocks(
+  minPrice: number = 25,
+  maxPrice: number = 100,
+  sampleSize: number = 100
+): Promise<Array<{ symbol: string; price: number; change: number; changePercent: number }>> {
+  const allSymbols = await getTradeableSymbols()
+
+  // Random sample
+  const shuffled = [...allSymbols].sort(() => Math.random() - 0.5)
+  const sample = shuffled.slice(0, sampleSize)
+
+  const eligible: Array<{ symbol: string; price: number; change: number; changePercent: number }> = []
+
+  for (const symbol of sample) {
+    const quote = await getQuote(symbol)
+    if (quote && quote.c >= minPrice && quote.c <= maxPrice) {
+      eligible.push({
+        symbol,
+        price: quote.c,
+        change: quote.d || 0,
+        changePercent: quote.dp || 0,
+      })
+    }
+    // Rate limit
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
 
   return eligible.sort((a, b) => b.changePercent - a.changePercent)
 }
