@@ -118,12 +118,13 @@ STRATEGY_FILTERS = {
         'name': '52-Week High Breakout',
         'filters': [
             col('close').between(25, 100),
-            col('close') > col('High.All') * 0.95,  # Within 5% of 52-week high
+            col('close') > col('SMA50'),  # Above 50 MA (trending up)
+            col('close') > col('SMA200'),  # Above 200 MA (long-term uptrend)
+            col('change') > 1,  # Up today (momentum)
             col('relative_volume_10d_calc') > 1.5,  # Volume spike
-            col('close') > col('SMA50'),  # Above 50 MA
             col('volume') > 500000,
         ],
-        'columns': ['name', 'close', 'High.All', 'SMA50', 'relative_volume_10d_calc', 'volume', 'change']
+        'columns': ['name', 'close', 'High.All', 'SMA50', 'SMA200', 'relative_volume_10d_calc', 'volume', 'change']
     },
     'adx_trend_rider': {
         'name': 'ADX Trend Rider',
