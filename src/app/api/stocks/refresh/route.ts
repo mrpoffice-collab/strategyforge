@@ -5,6 +5,32 @@ import { getTradeableSymbols, getQuote } from '@/lib/finnhub'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes for full refresh
 
+// GET /api/stocks/refresh - Get cached eligible stocks
+export async function GET() {
+  try {
+    const stocks = await prisma.stock.findMany({
+      where: { isEligible: true },
+      orderBy: { symbol: 'asc' },
+    })
+
+    return NextResponse.json({
+      success: true,
+      count: stocks.length,
+      stocks: stocks.map(s => ({
+        symbol: s.symbol,
+        price: s.currentPrice,
+        lastUpdated: s.lastUpdated,
+      })),
+    })
+  } catch (error) {
+    console.error('Error fetching cached stocks:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch cached stocks' },
+      { status: 500 }
+    )
+  }
+}
+
 // POST /api/stocks/refresh - Refresh eligible stocks cache (run daily)
 export async function POST(request: Request) {
   try {

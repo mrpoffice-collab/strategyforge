@@ -29,7 +29,8 @@
     "react-dom": "19.2.3",
     "recharts": "^3.6.0",
     "tailwind-merge": "^3.4.0",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "yahoo-finance2": "^3.10.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -1,7 +1,11 @@
 import axios from 'axios'
+import YahooFinance from 'yahoo-finance2'
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY
 const BASE_URL = 'https://finnhub.io/api/v1'
+
+// Initialize Yahoo Finance (required for v3+)
+const yahooFinance = new YahooFinance()
 
 interface StockQuote {
   c: number  // Current price
@@ -74,6 +78,18 @@ export async function getQuote(symbol: string): Promise<StockQuote | null> {
   }
 }
 
+// Yahoo historical data type
+interface YahooHistoricalRow {
+  date: Date
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  adjClose?: number
+}
+
+// Use Yahoo Finance for historical candles (Finnhub free tier doesn't include this)
 export async function getCandles(
   symbol: string,
   resolution: '1' | '5' | '15' | '30' | '60' | 'D' | 'W' | 'M' = 'D',
@@ -81,18 +97,35 @@ export async function getCandles(
   to: number
 ): Promise<StockCandle | null> {
   try {
-    const response = await axios.get(`${BASE_URL}/stock/candle`, {
-      params: {
-        symbol,
-        resolution,
-        from,
-        to,
-        token: FINNHUB_API_KEY,
-      },
-    })
-    return response.data
+    const fromDate = new Date(from * 1000)
+    const toDate = new Date(to * 1000)
+
+    // Use historical API which is more reliable
+    const result = await yahooFinance.historical(symbol, {
+      period1: fromDate,
+      period2: toDate,
+      interval: '1d',
+    }) as YahooHistoricalRow[]
+
+    if (!result || result.length === 0) {
+      console.log(`No Yahoo data for ${symbol}`)
+      return null
+    }
+
+    // Filter out any null values and convert to our format
+    const validData = result.filter(q => q.close !== null && q.close !== undefined)
+
+    return {
+      c: validData.map(q => q.close),
+      h: validData.map(q => q.high),
+      l: validData.map(q => q.low),
+      o: validData.map(q => q.open),
+      v: validData.map(q => q.volume),
+      t: validData.map(q => Math.floor(new Date(q.date).getTime() / 1000)),
+      s: 'ok',
+    }
   } catch (error) {
-    console.error(`Error fetching candles for ${symbol}:`, error)
+    console.error(`Error fetching Yahoo candles for ${symbol}:`, error instanceof Error ? error.message : error)
     return null
   }
 }

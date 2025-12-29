@@ -261,6 +261,8 @@ export async function POST(request: Request) {
       take: batchSize,
     })
 
+    console.log(`Batch ${batchNumber}: Found ${eligibleStocks.length} eligible stocks`)
+
     const results = {
       batch: batchNumber,
       symbolsProcessed: 0,
@@ -268,6 +270,10 @@ export async function POST(request: Request) {
       exitsProcessed: 0,
       matches: [] as Array<{ symbol: string; strategy: string; action: string }>,
       errors: [] as string[],
+      debug: {
+        stocksInBatch: eligibleStocks.length,
+        stockSymbols: eligibleStocks.map(s => s.symbol),
+      },
     }
 
     // FIRST: Check exits for all existing positions
@@ -334,21 +340,41 @@ export async function POST(request: Request) {
     // THEN: Check entries for batch symbols
     for (const stock of eligibleStocks) {
       try {
+        // Rate limit: wait 1 second before each stock
+        await new Promise(r => setTimeout(r, 1000))
+
         const quote = await getQuote(stock.symbol)
-        if (!quote || quote.c === 0 || quote.c < 25 || quote.c > 100) continue
+
+        // Use cached price if live quote unavailable (weekend/after hours)
+        const price = (quote && quote.c > 0) ? quote.c : stock.currentPrice
+        if (price < 25 || price > 100) continue
+
+        // Rate limit before candles call
+        await new Promise(r => setTimeout(r, 1000))
 
         const now = Math.floor(Date.now() / 1000)
-        const thirtyDaysAgo = now - 30 * 24 * 60 * 60
-        const candles = await getCandles(stock.symbol, 'D', thirtyDaysAgo, now)
+        const sixtyDaysAgo = now - 60 * 24 * 60 * 60 // Extended to 60 days
+        const candles = await getCandles(stock.symbol, 'D', sixtyDaysAgo, now)
 
-        if (!candles || candles.s !== 'ok' || !candles.c || candles.c.length < 20) continue
+        if (!candles) {
+          results.errors.push(`${stock.symbol}: candles null`)
+          continue
+        }
+        if (candles.s !== 'ok') {
+          results.errors.push(`${stock.symbol}: status=${candles.s}`)
+          continue
+        }
+        if (!candles.c || candles.c.length < 20) {
+          results.errors.push(`${stock.symbol}: only ${candles.c?.length || 0} points`)
+          continue
+        }
 
         results.symbolsProcessed++
 
         // Check against ALL strategies at once
         const matches = await checkSymbolAgainstAllStrategies(
           stock.symbol,
-          quote.c,
+          price,
           candles.c,
           candles.h,
           candles.l,
@@ -368,19 +394,19 @@ export async function POST(request: Request) {
           if (!sim) continue
 
           const positionValue = sim.simulation.currentCapital * (sim.positionSize / 100)
-          const shares = Math.floor(positionValue / quote.c)
+          const shares = Math.floor(positionValue / price)
           if (shares < 1) continue
 
-          const totalCost = shares * quote.c
+          const totalCost = shares * price
 
           await prisma.position.create({
             data: {
               simulationId: match.simulationId,
               symbol: stock.symbol,
               shares,
-              entryPrice: quote.c,
+              entryPrice: price,
               entryDate: new Date(),
-              currentPrice: quote.c,
+              currentPrice: price,
               currentValue: totalCost,
               unrealizedPL: 0,
               unrealizedPLPercent: 0,
@@ -394,7 +420,7 @@ export async function POST(request: Request) {
               symbol: stock.symbol,
               side: 'BUY',
               entryDate: new Date(),
-              entryPrice: quote.c,
+              entryPrice: price,
               shares,
               totalCost,
             },
