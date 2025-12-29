@@ -203,6 +203,10 @@ def main():
             indicators = {k: v for k, v in row.items() if k != 'name'}
             price = row.get('close', 0)
 
+            # Double-check price is in valid range (TradingView filter sometimes fails)
+            if not price or price < 25 or price > 100:
+                continue
+
             all_signals.append({
                 'symbol': symbol,
                 'strategy_key': strategy_key,
