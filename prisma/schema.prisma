@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Trading strategies based on whitepapers
+model Strategy {
+  id              String       @id @default(cuid())
+  name            String       @unique
+  description     String
+  whitepaperTitle String?
+  whitepaperAuthor String?
+  whitepaperYear  Int?
+
+  // Entry conditions stored as JSON
+  entryConditions Json
+  // Exit conditions stored as JSON
+  exitConditions  Json
+  // Position sizing (percentage of portfolio)
+  positionSize    Float        @default(10)
+
+  status          String       @default("active") // active, paused, completed
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  simulations     Simulation[]
+  trades          Trade[]
+
+  @@index([status])
+}
+
+// A single simulation run for a strategy
+model Simulation {
+  id               String     @id @default(cuid())
+  strategyId       String
+  strategy         Strategy   @relation(fields: [strategyId], references: [id])
+
+  mode             String     @default("realtime") // realtime, backtest
+  startDate        DateTime   @default(now())
+  endDate          DateTime?
+  status           String     @default("running") // running, completed, failed, paused
+
+  initialCapital   Float      @default(2000)
+  currentCapital   Float      @default(2000)
+  totalPL          Float      @default(0)
+  totalPLPercent   Float      @default(0)
+
+  tradesCompleted  Int        @default(0)
+  tradesLimit      Int        @default(200)
+
+  winCount         Int        @default(0)
+  lossCount        Int        @default(0)
+  winRate          Float      @default(0)
+
+  largestWin       Float      @default(0)
+  largestLoss      Float      @default(0)
+  avgHoldTimeHours Float      @default(0)
+
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  trades           Trade[]
+  positions        Position[]
+
+  @@index([strategyId, status])
+  @@index([mode])
+}
+
+// Individual trade record
+model Trade {
+  id             String     @id @default(cuid())
+  simulationId   String
+  simulation     Simulation @relation(fields: [simulationId], references: [id])
+  strategyId     String
+  strategy       Strategy   @relation(fields: [strategyId], references: [id])
+
+  symbol         String
+  side           String     // BUY or SELL
+
+  entryDate      DateTime
+  entryPrice     Float
+  exitDate       DateTime?
+  exitPrice      Float?
+
+  shares         Int
+  totalCost      Float      // Entry price * shares
+
+  profitLoss     Float?
+  profitLossPercent Float?
+  holdTimeHours  Float?
+
+  exitReason     String?    // PROFIT_TARGET, STOP_LOSS, SIGNAL, TIME_LIMIT
+
+  // Indicator values at entry (for analysis)
+  indicatorsAtEntry Json?
+
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([simulationId])
+  @@index([strategyId])
+  @@index([symbol])
+}
+
+// Active positions (open trades)
+model Position {
+  id             String     @id @default(cuid())
+  simulationId   String
+  simulation     Simulation @relation(fields: [simulationId], references: [id])
+
+  symbol         String
+  shares         Int
+  entryPrice     Float
+  entryDate      DateTime
+  currentPrice   Float
+  currentValue   Float
+  unrealizedPL   Float
+  unrealizedPLPercent Float
+
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([simulationId, symbol])
+  @@index([simulationId])
+}
+
+// Cached stock data for eligible stocks ($25-$100)
+model Stock {
+  id             String     @id @default(cuid())
+  symbol         String     @unique
+  name           String
+  exchange       String     // NYSE, NASDAQ
+
+  currentPrice   Float
+  previousClose  Float?
+  avgVolume      Float      // 30-day average volume
+
+  isEligible     Boolean    @default(true)
+
+  lastUpdated    DateTime   @default(now())
+  createdAt      DateTime   @default(now())
+
+  marketData     MarketData[]
+
+  @@index([isEligible])
+  @@index([currentPrice])
+}
+
+// Historical and current market data with pre-calculated indicators
+model MarketData {
+  id             String     @id @default(cuid())
+  stockId        String
+  stock          Stock      @relation(fields: [stockId], references: [id])
+  symbol         String
+  date           DateTime
+
+  open           Float
+  high           Float
+  low            Float
+  close          Float
+  volume         Float
+
+  // Pre-calculated indicators (cached)
+  rsi14          Float?
+  macd           Float?
+  macdSignal     Float?
+  macdHistogram  Float?
+  bbUpper        Float?
+  bbMiddle       Float?
+  bbLower        Float?
+  sma20          Float?
+  sma50          Float?
+  sma200         Float?
+  ema12          Float?
+  ema26          Float?
+
+  createdAt      DateTime   @default(now())
+
+  @@unique([symbol, date])
+  @@index([symbol, date])
+  @@index([stockId])
+}
+
+// Generated whitepapers/reports
+model Report {
+  id             String     @id @default(cuid())
+  strategyId     String
+  simulationId   String?
+
+  title          String
+  content        String     @db.Text
+  summary        String?
+
+  // Performance snapshot at generation time
+  totalReturn    Float
+  winRate        Float
+  tradesAnalyzed Int
+  sharpeRatio    Float?
+  maxDrawdown    Float?
+
+  generatedAt    DateTime   @default(now())
+
+  @@index([strategyId])
+}
+
+// System configuration and state
+model SystemConfig {
+  id             String     @id @default(cuid())
+  key            String     @unique
+  value          String
+  updatedAt      DateTime   @updatedAt
+}
