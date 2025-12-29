@@ -230,12 +230,43 @@ export function calculateSMA(prices: number[], period: number): number | null {
   return recentPrices.reduce((a, b) => a + b, 0) / period
 }
 
+// Fallback list of known liquid stocks typically in $25-100 range
+const KNOWN_LIQUID_STOCKS = [
+  // Tech
+  'AMD', 'INTC', 'MU', 'QCOM', 'AMAT', 'LRCX', 'MRVL', 'ON', 'SWKS', 'QRVO',
+  'PYPL', 'SQ', 'AFRM', 'SOFI', 'UPST', 'LC', 'HOOD', 'COIN',
+  'UBER', 'LYFT', 'DASH', 'ABNB', 'RBLX', 'SNAP', 'PINS', 'MTCH',
+  'NET', 'CRWD', 'ZS', 'OKTA', 'DDOG', 'MDB', 'ESTC', 'GTLB',
+  // Consumer
+  'NKE', 'LULU', 'UAA', 'DECK', 'SKX', 'CROX',
+  'SBUX', 'CMG', 'DPZ', 'YUM', 'QSR', 'WING',
+  'TGT', 'COST', 'WMT', 'DG', 'DLTR', 'FIVE',
+  // Industrial
+  'F', 'GM', 'RIVN', 'LCID', 'NIO', 'XPEV', 'LI',
+  'BA', 'LMT', 'RTX', 'NOC', 'GD',
+  'CAT', 'DE', 'CNH', 'AGCO',
+  // Healthcare
+  'PFE', 'MRK', 'BMY', 'ABBV', 'GILD', 'BIIB', 'REGN', 'VRTX',
+  'CVS', 'WBA', 'CI', 'HUM', 'UNH',
+  // Energy
+  'XOM', 'CVX', 'COP', 'EOG', 'PXD', 'DVN', 'OXY',
+  // Financial
+  'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'SCHW',
+  // Media/Telecom
+  'DIS', 'NFLX', 'WBD', 'PARA', 'FOX',
+  'T', 'VZ', 'TMUS',
+  // Travel
+  'UAL', 'DAL', 'LUV', 'AAL', 'JBLU',
+  'MAR', 'HLT', 'H', 'WH',
+  'CCL', 'RCL', 'NCLH'
+]
+
 // Cache for all US symbols (refreshed periodically)
 let cachedSymbols: string[] = []
 let symbolsCacheTime = 0
 const SYMBOLS_CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
 
-// Get all tradeable symbols (cached)
+// Get all tradeable symbols (cached, with fallback)
 export async function getTradeableSymbols(): Promise<string[]> {
   const now = Date.now()
 
@@ -244,12 +275,25 @@ export async function getTradeableSymbols(): Promise<string[]> {
     return cachedSymbols
   }
 
-  // Fetch fresh list
-  const allSymbols = await getAllUSSymbols()
-  cachedSymbols = allSymbols.map(s => s.symbol)
-  symbolsCacheTime = now
+  // Try to fetch fresh list, but use fallback if it fails
+  try {
+    const allSymbols = await getAllUSSymbols()
+    if (allSymbols.length > 100) {
+      // Combine API results with known liquid stocks for better coverage
+      const apiSymbols = allSymbols.map(s => s.symbol)
+      cachedSymbols = [...new Set([...KNOWN_LIQUID_STOCKS, ...apiSymbols])]
+      symbolsCacheTime = now
+      console.log(`Loaded ${cachedSymbols.length} symbols (${KNOWN_LIQUID_STOCKS.length} known + ${apiSymbols.length} from API)`)
+      return cachedSymbols
+    }
+  } catch (error) {
+    console.error('Failed to fetch US symbols, using fallback list:', error)
+  }
 
-  console.log(`Loaded ${cachedSymbols.length} US stock symbols`)
+  // Use fallback list
+  cachedSymbols = KNOWN_LIQUID_STOCKS
+  symbolsCacheTime = now
+  console.log(`Using fallback list of ${cachedSymbols.length} known liquid stocks`)
   return cachedSymbols
 }
 
