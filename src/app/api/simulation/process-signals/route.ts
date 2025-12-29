@@ -151,148 +151,182 @@ export async function POST(request: Request) {
       }
     }
 
-    // STEP 2: Process unprocessed screener signals (limited batch)
-    const signals = await prisma.screenerSignal.findMany({
+    // STEP 2: Process signals STRATEGY BY STRATEGY (ensures all strategies get checked)
+    // Get all strategies with running simulations that have capital
+    const strategiesWithCapital = await prisma.strategy.findMany({
       where: {
-        processed: false,
-        scannedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        simulations: {
+          some: {
+            status: 'running',
+            currentCapital: { gte: 100 },
+          },
+        },
       },
-      orderBy: { scannedAt: 'desc' },
-      take: MAX_SIGNALS_PER_RUN,
+      include: {
+        simulations: {
+          where: { status: 'running' },
+          take: 1,
+        },
+      },
     })
 
-    console.log(`Processing ${signals.length} screener signals (batch of ${MAX_SIGNALS_PER_RUN})`)
+    console.log(`Found ${strategiesWithCapital.length} strategies with capital >= $100`)
 
-    for (const signal of signals) {
-      // Time check - ensure we don't timeout
+    // Process up to 5 signals per strategy (ensures fair distribution)
+    const SIGNALS_PER_STRATEGY = 5
+
+    for (const strategy of strategiesWithCapital) {
+      // Time check
       if (Date.now() - startTime > 50000) {
-        console.log('Time limit approaching, stopping signal processing')
+        console.log('Time limit approaching, stopping')
         break
       }
 
-      try {
-        const strategyId = STRATEGY_KEY_MAP[signal.strategyKey]
-        if (!strategyId) {
-          results.skipReasons['no_strategy_mapping'] = (results.skipReasons['no_strategy_mapping'] || 0) + 1
-          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
-          continue
-        }
+      const simulation = strategy.simulations[0]
+      if (!simulation) continue
 
-        const strategy = await prisma.strategy.findUnique({
-          where: { id: strategyId },
-          include: { simulations: { where: { status: 'running' }, take: 1 } },
-        })
-
-        if (!strategy || strategy.simulations.length === 0) {
-          results.skipReasons['no_running_simulation'] = (results.skipReasons['no_running_simulation'] || 0) + 1
-          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
-          continue
-        }
-
-        const simulation = strategy.simulations[0]
-
-        if (simulation.tradesCompleted >= simulation.tradesLimit) {
-          results.skipReasons['trade_limit_reached'] = (results.skipReasons['trade_limit_reached'] || 0) + 1
-          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
-          continue
-        }
-
-        // Check existing position
-        const existingPosition = await prisma.position.findUnique({
-          where: { simulationId_symbol: { simulationId: simulation.id, symbol: signal.symbol } },
-        })
-
-        if (existingPosition) {
-          results.skipReasons['already_holding'] = (results.skipReasons['already_holding'] || 0) + 1
-          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
-          continue
-        }
-
-        // Use screener's price (already validated) - skip expensive API call
-        const price = signal.price
-        if (!price || price < 25 || price > 100) {
-          results.skipReasons['invalid_price'] = (results.skipReasons['invalid_price'] || 0) + 1
-          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
-          continue
-        }
-
-        // Re-fetch simulation for current capital (prevent overspending)
-        const currentSim = await prisma.simulation.findUnique({
-          where: { id: simulation.id },
-          select: { currentCapital: true },
-        })
-        if (!currentSim || currentSim.currentCapital < 100) {
-          results.skipReasons['insufficient_capital'] = (results.skipReasons['insufficient_capital'] || 0) + 1
-          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
-          continue
-        }
-
-        const positionValue = currentSim.currentCapital * (strategy.positionSize / 100)
-        const targetValue = Math.max(positionValue, 100)
-        const shares = Math.max(1, Math.floor(targetValue / price))
-        const totalCost = shares * price
-
-        // CAPITAL CHECK: Never spend more than available
-        if (totalCost > currentSim.currentCapital) {
-          results.skipReasons['cost_exceeds_capital'] = (results.skipReasons['cost_exceeds_capital'] || 0) + 1
-          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
-          continue
-        }
-
-        // Create position, trade, update capital, mark processed - all at once
-        await Promise.all([
-          prisma.position.create({
-            data: {
-              simulationId: simulation.id,
-              symbol: signal.symbol,
-              shares,
-              entryPrice: price,
-              entryDate: new Date(),
-              currentPrice: price,
-              currentValue: totalCost,
-              unrealizedPL: 0,
-              unrealizedPLPercent: 0,
-            },
-          }),
-          prisma.trade.create({
-            data: {
-              simulationId: simulation.id,
-              strategyId: strategy.id,
-              symbol: signal.symbol,
-              side: 'BUY',
-              entryDate: new Date(),
-              entryPrice: price,
-              shares,
-              totalCost,
-              indicatorsAtEntry: signal.indicators ?? undefined,
-            },
-          }),
-          prisma.simulation.update({
-            where: { id: simulation.id },
-            data: { currentCapital: { decrement: totalCost } },
-          }),
-          prisma.screenerSignal.update({
-            where: { id: signal.id },
-            data: { processed: true },
-          }),
-        ])
-
-        results.tradesOpened++
-        results.trades.push({
-          symbol: signal.symbol,
-          strategy: strategy.name,
-          action: 'BUY',
-          shares,
-          value: totalCost,
-        })
-        results.signalsProcessed++
-      } catch (err) {
-        results.errors.push(`Signal ${signal.symbol}: ${err instanceof Error ? err.message : 'Unknown'}`)
-        // Mark as processed to avoid retrying broken signals
-        try {
-          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
-        } catch {}
+      // Find the strategy key for this strategy ID
+      const strategyKey = Object.entries(STRATEGY_KEY_MAP).find(([_, id]) => id === strategy.id)?.[0]
+      if (!strategyKey) {
+        console.log(`No screener key for strategy: ${strategy.name}`)
+        continue
       }
+
+      // Get signals for THIS strategy
+      const signals = await prisma.screenerSignal.findMany({
+        where: {
+          processed: false,
+          strategyKey: strategyKey,
+          scannedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        },
+        orderBy: { scannedAt: 'desc' },
+        take: SIGNALS_PER_STRATEGY,
+      })
+
+      console.log(`${strategy.name}: ${signals.length} pending signals, $${simulation.currentCapital.toFixed(0)} capital`)
+
+      for (const signal of signals) {
+        if (Date.now() - startTime > 50000) break
+
+        try {
+          // Check trade limit
+          if (simulation.tradesCompleted >= simulation.tradesLimit) {
+            results.skipReasons['trade_limit_reached'] = (results.skipReasons['trade_limit_reached'] || 0) + 1
+            await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
+            continue
+          }
+
+          // Check existing position
+          const existingPosition = await prisma.position.findUnique({
+            where: { simulationId_symbol: { simulationId: simulation.id, symbol: signal.symbol } },
+          })
+
+          if (existingPosition) {
+            results.skipReasons['already_holding'] = (results.skipReasons['already_holding'] || 0) + 1
+            await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
+            continue
+          }
+
+          // Validate price
+          const price = signal.price
+          if (!price || price < 25 || price > 100) {
+            results.skipReasons['invalid_price'] = (results.skipReasons['invalid_price'] || 0) + 1
+            await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
+            continue
+          }
+
+          // Re-fetch simulation for current capital
+          const currentSim = await prisma.simulation.findUnique({
+            where: { id: simulation.id },
+            select: { currentCapital: true },
+          })
+          if (!currentSim || currentSim.currentCapital < 100) {
+            results.skipReasons['insufficient_capital'] = (results.skipReasons['insufficient_capital'] || 0) + 1
+            await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
+            break // Stop processing this strategy - it's out of money
+          }
+
+          const positionValue = currentSim.currentCapital * (strategy.positionSize / 100)
+          const targetValue = Math.max(positionValue, 100)
+          const shares = Math.max(1, Math.floor(targetValue / price))
+          const totalCost = shares * price
+
+          if (totalCost > currentSim.currentCapital) {
+            results.skipReasons['cost_exceeds_capital'] = (results.skipReasons['cost_exceeds_capital'] || 0) + 1
+            await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
+            break // Stop this strategy
+          }
+
+          // Execute trade
+          await Promise.all([
+            prisma.position.create({
+              data: {
+                simulationId: simulation.id,
+                symbol: signal.symbol,
+                shares,
+                entryPrice: price,
+                entryDate: new Date(),
+                currentPrice: price,
+                currentValue: totalCost,
+                unrealizedPL: 0,
+                unrealizedPLPercent: 0,
+              },
+            }),
+            prisma.trade.create({
+              data: {
+                simulationId: simulation.id,
+                strategyId: strategy.id,
+                symbol: signal.symbol,
+                side: 'BUY',
+                entryDate: new Date(),
+                entryPrice: price,
+                shares,
+                totalCost,
+                indicatorsAtEntry: signal.indicators ?? undefined,
+              },
+            }),
+            prisma.simulation.update({
+              where: { id: simulation.id },
+              data: { currentCapital: { decrement: totalCost } },
+            }),
+            prisma.screenerSignal.update({
+              where: { id: signal.id },
+              data: { processed: true },
+            }),
+          ])
+
+          results.tradesOpened++
+          results.trades.push({
+            symbol: signal.symbol,
+            strategy: strategy.name,
+            action: 'BUY',
+            shares,
+            value: totalCost,
+          })
+          results.signalsProcessed++
+        } catch (err) {
+          results.errors.push(`Signal ${signal.symbol}: ${err instanceof Error ? err.message : 'Unknown'}`)
+          try {
+            await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
+          } catch {}
+        }
+      }
+    }
+
+    // Also clean up signals for strategies without screener mappings
+    const unmappedSignals = await prisma.screenerSignal.findMany({
+      where: {
+        processed: false,
+        strategyKey: { notIn: Object.keys(STRATEGY_KEY_MAP) },
+      },
+      take: 50,
+    })
+    if (unmappedSignals.length > 0) {
+      await prisma.screenerSignal.updateMany({
+        where: { id: { in: unmappedSignals.map(s => s.id) } },
+        data: { processed: true },
+      })
+      results.skipReasons['no_strategy_mapping'] = unmappedSignals.length
     }
 
     const durationMs = Date.now() - startTime
