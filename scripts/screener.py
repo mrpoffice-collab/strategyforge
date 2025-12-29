@@ -113,6 +113,51 @@ STRATEGY_FILTERS = {
         ],
         'columns': ['name', 'close', 'relative_volume_10d_calc', 'High.All', 'volume', 'change']
     },
+    # ========== TREND-FOLLOWING STRATEGIES ==========
+    '52_week_high_breakout': {
+        'name': '52-Week High Breakout',
+        'filters': [
+            col('close').between(25, 100),
+            col('close') > col('High.All') * 0.95,  # Within 5% of 52-week high
+            col('relative_volume_10d_calc') > 1.5,  # Volume spike
+            col('close') > col('SMA50'),  # Above 50 MA
+            col('volume') > 500000,
+        ],
+        'columns': ['name', 'close', 'High.All', 'SMA50', 'relative_volume_10d_calc', 'volume', 'change']
+    },
+    'adx_trend_rider': {
+        'name': 'ADX Trend Rider',
+        'filters': [
+            col('close').between(25, 100),
+            col('ADX') > 25,  # Strong trend
+            col('ADX+DI') > col('ADX-DI'),  # Bullish direction
+            col('close') > col('SMA50'),  # Above 50 MA
+            col('volume') > 500000,
+        ],
+        'columns': ['name', 'close', 'ADX', 'ADX+DI', 'ADX-DI', 'SMA50', 'volume', 'change']
+    },
+    'triple_ma_trend': {
+        'name': 'Triple MA Trend',
+        'filters': [
+            col('close').between(25, 100),
+            col('close') > col('SMA20'),  # Price above 20 MA
+            col('SMA20') > col('SMA50'),  # 20 MA above 50 MA (aligned trend)
+            col('MACD.macd') > col('MACD.signal'),  # MACD bullish
+            col('volume') > 500000,
+        ],
+        'columns': ['name', 'close', 'SMA20', 'SMA50', 'MACD.macd', 'MACD.signal', 'volume', 'change']
+    },
+    'momentum_persistence': {
+        'name': 'Momentum Persistence',
+        'filters': [
+            col('close').between(25, 100),
+            col('change') > 3,  # Up more than 3% today (momentum)
+            col('close') > col('SMA200'),  # Above 200 MA (long-term uptrend)
+            col('relative_volume_10d_calc') > 1.2,  # Above average volume
+            col('volume') > 500000,
+        ],
+        'columns': ['name', 'close', 'SMA200', 'change', 'relative_volume_10d_calc', 'volume']
+    },
 }
 
 
