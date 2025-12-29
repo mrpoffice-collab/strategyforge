@@ -2,20 +2,16 @@ name: Trading Simulation Cron
 
 on:
   schedule:
-    # TradingView screener - run every 30 minutes during market hours
-    # Market hours: 9:30 AM - 4 PM EST = 14:30 - 21:00 UTC
-    - cron: '0,30 14-20 * * 1-5'   # Every 30 min during market hours
-    - cron: '0 21 * * 1-5'         # 4 PM EST close
-
-    # Process signals - run every 15 minutes during market hours
-    - cron: '*/15 14-21 * * 1-5'
+    # Run every 5 minutes during market hours (Mon-Fri)
+    # Market hours: 8:30 AM - 3 PM CST = 9:30 AM - 4 PM EST = 14:30 - 21:00 UTC
+    - cron: '*/5 14-21 * * 1-5'
 
   workflow_dispatch:
     inputs:
       action:
         description: 'Action to run'
         required: true
-        default: 'screener'
+        default: 'both'
         type: choice
         options:
           - screener
@@ -23,75 +19,10 @@ on:
           - both
 
 jobs:
-  # Run TradingView screener (Python)
-  run-screener:
-    if: |
-      github.event.inputs.action == 'screener' ||
-      github.event.inputs.action == 'both' ||
-      (github.event.schedule && contains('0,30', format('{0}', github.event.schedule)))
+  # Combined job: Scan + Process every 5 minutes
+  trading-cycle:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          pip install -r scripts/requirements.txt
-
-      - name: Run TradingView screener
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          echo "Starting TradingView screener at $(date -u)"
-          python scripts/screener.py
-          echo "Screener completed at $(date -u)"
-
-  # Process screener signals into trades
-  process-signals:
-    if: |
-      github.event.inputs.action == 'process' ||
-      github.event.inputs.action == 'both' ||
-      (github.event.schedule && !contains('0,30', format('{0}', github.event.schedule)))
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs: [run-screener]
-    # Allow this job to run even if screener was skipped
-    if: always()
-    steps:
-      - name: Process signals into trades
-        run: |
-          echo "Processing screener signals at $(date -u)"
-
-          response=$(curl -s -w "\n%{http_code}" -X POST \
-            "${{ secrets.APP_URL }}/api/simulation/process-signals" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            --max-time 120)
-
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-
-          echo "Response: $body"
-          echo "HTTP Status: $http_code"
-
-          if [ "$http_code" -ge 400 ]; then
-            echo "Request failed with status $http_code"
-            exit 1
-          fi
-
-          echo "Signal processing completed"
-
-  # Manual: Run both screener and process
-  run-both:
-    if: github.event.inputs.action == 'both'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -105,18 +36,24 @@ jobs:
         run: pip install -r scripts/requirements.txt
 
       - name: Run TradingView screener
+        if: github.event.inputs.action != 'process'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          echo "Starting TradingView screener at $(date -u)"
+          echo "=== TradingView Screener ==="
+          echo "Started at $(date -u)"
           python scripts/screener.py
+          echo "Completed at $(date -u)"
 
       - name: Wait for DB sync
-        run: sleep 5
+        if: github.event.inputs.action != 'process'
+        run: sleep 3
 
       - name: Process signals into trades
+        if: github.event.inputs.action != 'screener'
         run: |
-          echo "Processing screener signals at $(date -u)"
+          echo "=== Processing Signals ==="
+          echo "Started at $(date -u)"
 
           response=$(curl -s -w "\n%{http_code}" -X POST \
             "${{ secrets.APP_URL }}/api/simulation/process-signals" \
@@ -135,4 +72,4 @@ jobs:
             exit 1
           fi
 
-          echo "All processing completed"
+          echo "Completed at $(date -u)"
