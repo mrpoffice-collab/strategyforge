@@ -5,6 +5,10 @@ import { getQuote } from '@/lib/finnhub'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+// Process in batches to avoid timeout (runs every 5 min)
+const MAX_SIGNALS_PER_RUN = 30
+const MAX_EXITS_PER_RUN = 15
+
 // Strategy key to database ID mapping
 const STRATEGY_KEY_MAP: Record<string, string> = {
   'rsi_stochastic_oversold': 'strat_rsi_stochastic_double_oversold',
@@ -19,6 +23,8 @@ const STRATEGY_KEY_MAP: Record<string, string> = {
 
 // POST /api/simulation/process-signals - Process screener signals into trades
 export async function POST(request: Request) {
+  const startTime = Date.now()
+
   try {
     // Auth check
     const authHeader = request.headers.get('authorization')
@@ -31,21 +37,32 @@ export async function POST(request: Request) {
       signalsProcessed: 0,
       tradesOpened: 0,
       tradesClosed: 0,
+      positionsUpdated: 0,
       errors: [] as string[],
       trades: [] as Array<{ symbol: string; strategy: string; action: string; shares: number; value: number }>,
     }
 
-    // STEP 1: Check exits for all existing positions first
+    // STEP 1: Check exits for existing positions (limited batch)
     const positions = await prisma.position.findMany({
       include: { simulation: { include: { strategy: true } } },
+      take: MAX_EXITS_PER_RUN,
+      orderBy: { entryDate: 'asc' },
     })
 
     for (const position of positions) {
-      try {
-        const quote = await getQuote(position.symbol)
-        if (!quote || quote.c === 0) continue
+      // Time check - leave buffer for signal processing
+      if (Date.now() - startTime > 25000) break
 
-        const currentPrice = quote.c
+      try {
+        // Use screener's cached price from position, try live quote as fallback
+        let currentPrice = position.currentPrice
+        try {
+          const quote = await getQuote(position.symbol)
+          if (quote && quote.c > 0) currentPrice = quote.c
+        } catch {
+          // Use cached price if API fails
+        }
+
         const exitConds = position.simulation.strategy.exitConditions as {
           profitTarget: number
           stopLoss: number
@@ -66,41 +83,28 @@ export async function POST(request: Request) {
         if (shouldExit) {
           const profitLoss = (currentPrice - position.entryPrice) * position.shares
           const isWin = profitLoss >= 0
-
-          // Update trade record
-          await prisma.trade.updateMany({
-            where: {
-              simulationId: position.simulationId,
-              symbol: position.symbol,
-              exitDate: null,
-            },
-            data: {
-              exitDate: new Date(),
-              exitPrice: currentPrice,
-              profitLoss,
-              profitLossPercent: pnlPercent,
-              exitReason,
-            },
-          })
-
-          // Delete position
-          await prisma.position.delete({ where: { id: position.id } })
-
-          // Update simulation stats
           const totalTrades = position.simulation.tradesCompleted + 1
           const totalWins = position.simulation.winCount + (isWin ? 1 : 0)
 
-          await prisma.simulation.update({
-            where: { id: position.simulationId },
-            data: {
-              currentCapital: { increment: position.shares * currentPrice },
-              totalPL: { increment: profitLoss },
-              tradesCompleted: { increment: 1 },
-              winCount: isWin ? { increment: 1 } : undefined,
-              lossCount: !isWin ? { increment: 1 } : undefined,
-              winRate: (totalWins / totalTrades) * 100,
-            },
-          })
+          // Batch all updates together
+          await Promise.all([
+            prisma.trade.updateMany({
+              where: { simulationId: position.simulationId, symbol: position.symbol, exitDate: null },
+              data: { exitDate: new Date(), exitPrice: currentPrice, profitLoss, profitLossPercent: pnlPercent, exitReason },
+            }),
+            prisma.position.delete({ where: { id: position.id } }),
+            prisma.simulation.update({
+              where: { id: position.simulationId },
+              data: {
+                currentCapital: { increment: position.shares * currentPrice },
+                totalPL: { increment: profitLoss },
+                tradesCompleted: { increment: 1 },
+                winCount: isWin ? { increment: 1 } : undefined,
+                lossCount: !isWin ? { increment: 1 } : undefined,
+                winRate: (totalWins / totalTrades) * 100,
+              },
+            }),
+          ])
 
           results.tradesClosed++
           results.trades.push({
@@ -110,141 +114,142 @@ export async function POST(request: Request) {
             shares: position.shares,
             value: position.shares * currentPrice,
           })
+        } else {
+          // Update position's current price
+          await prisma.position.update({
+            where: { id: position.id },
+            data: {
+              currentPrice,
+              currentValue: position.shares * currentPrice,
+              unrealizedPL: (currentPrice - position.entryPrice) * position.shares,
+              unrealizedPLPercent: pnlPercent,
+            },
+          })
+          results.positionsUpdated++
         }
-
-        // Rate limit
-        await new Promise(r => setTimeout(r, 200))
       } catch (err) {
         results.errors.push(`Exit check ${position.symbol}: ${err instanceof Error ? err.message : 'Unknown'}`)
       }
     }
 
-    // STEP 2: Process unprocessed screener signals
+    // STEP 2: Process unprocessed screener signals (limited batch)
     const signals = await prisma.screenerSignal.findMany({
       where: {
         processed: false,
-        scannedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, // Last 24 hours
+        scannedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
       },
       orderBy: { scannedAt: 'desc' },
+      take: MAX_SIGNALS_PER_RUN,
     })
 
-    console.log(`Processing ${signals.length} screener signals`)
+    console.log(`Processing ${signals.length} screener signals (batch of ${MAX_SIGNALS_PER_RUN})`)
 
     for (const signal of signals) {
+      // Time check - ensure we don't timeout
+      if (Date.now() - startTime > 50000) {
+        console.log('Time limit approaching, stopping signal processing')
+        break
+      }
+
       try {
-        // Map screener strategy key to database strategy ID
         const strategyId = STRATEGY_KEY_MAP[signal.strategyKey]
         if (!strategyId) {
-          results.errors.push(`Unknown strategy key: ${signal.strategyKey}`)
+          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
           continue
         }
 
-        // Get strategy with running simulation
         const strategy = await prisma.strategy.findUnique({
           where: { id: strategyId },
-          include: {
-            simulations: {
-              where: { status: 'running' },
-              take: 1,
-            },
-          },
+          include: { simulations: { where: { status: 'running' }, take: 1 } },
         })
 
         if (!strategy || strategy.simulations.length === 0) {
-          continue // Strategy not active or no running simulation
+          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
+          continue
         }
 
         const simulation = strategy.simulations[0]
 
-        // Skip if simulation has reached trade limit
         if (simulation.tradesCompleted >= simulation.tradesLimit) {
+          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
           continue
         }
 
-        // Check if we already have a position in this symbol
+        // Check existing position
         const existingPosition = await prisma.position.findUnique({
-          where: {
-            simulationId_symbol: {
-              simulationId: simulation.id,
-              symbol: signal.symbol,
-            },
-          },
+          where: { simulationId_symbol: { simulationId: simulation.id, symbol: signal.symbol } },
         })
 
         if (existingPosition) {
-          // Mark signal as processed
-          await prisma.screenerSignal.update({
-            where: { id: signal.id },
-            data: { processed: true },
-          })
+          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
           continue
         }
 
-        // Get current price
-        const quote = await getQuote(signal.symbol)
-        const price = (quote && quote.c > 0) ? quote.c : signal.price
+        // Use screener's price (already validated) - skip expensive API call
+        const price = signal.price
         if (!price || price < 25 || price > 100) {
+          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
           continue
         }
 
-        // FIXED POSITION SIZING: ~$200 per trade (10% of $2000)
-        // positionSize is a percentage (e.g., 10 = 10%)
-        const positionValue = simulation.currentCapital * (strategy.positionSize / 100)
+        // Re-fetch simulation for current capital (prevent overspending)
+        const currentSim = await prisma.simulation.findUnique({
+          where: { id: simulation.id },
+          select: { currentCapital: true },
+        })
+        if (!currentSim || currentSim.currentCapital < 100) {
+          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
+          continue
+        }
 
-        // Ensure minimum position value of $100
+        const positionValue = currentSim.currentCapital * (strategy.positionSize / 100)
         const targetValue = Math.max(positionValue, 100)
-
-        // Calculate shares (must buy at least 1 share)
         const shares = Math.max(1, Math.floor(targetValue / price))
         const totalCost = shares * price
 
-        // Check if we have enough capital
-        if (totalCost > simulation.currentCapital) {
-          results.errors.push(`${signal.symbol}: Insufficient capital ($${simulation.currentCapital.toFixed(2)} < $${totalCost.toFixed(2)})`)
+        // CAPITAL CHECK: Never spend more than available
+        if (totalCost > currentSim.currentCapital) {
+          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
           continue
         }
 
-        // Create position
-        await prisma.position.create({
-          data: {
-            simulationId: simulation.id,
-            symbol: signal.symbol,
-            shares,
-            entryPrice: price,
-            entryDate: new Date(),
-            currentPrice: price,
-            currentValue: totalCost,
-            unrealizedPL: 0,
-            unrealizedPLPercent: 0,
-          },
-        })
-
-        // Create trade record
-        await prisma.trade.create({
-          data: {
-            simulationId: simulation.id,
-            strategyId: strategy.id,
-            symbol: signal.symbol,
-            side: 'BUY',
-            entryDate: new Date(),
-            entryPrice: price,
-            shares,
-            totalCost,
-            indicatorsAtEntry: signal.indicators ?? undefined,
-          },
-        })
-
-        // Update simulation capital
-        await prisma.simulation.update({
-          where: { id: simulation.id },
-          data: { currentCapital: { decrement: totalCost } },
-        })
-
-        // Mark signal as processed
-        await prisma.screenerSignal.update({
-          where: { id: signal.id },
-          data: { processed: true },
-        })
+        // Create position, trade, update capital, mark processed - all at once
+        await Promise.all([
+          prisma.position.create({
+            data: {
+              simulationId: simulation.id,
+              symbol: signal.symbol,
+              shares,
+              entryPrice: price,
+              entryDate: new Date(),
+              currentPrice: price,
+              currentValue: totalCost,
+              unrealizedPL: 0,
+              unrealizedPLPercent: 0,
+            },
+          }),
+          prisma.trade.create({
+            data: {
+              simulationId: simulation.id,
+              strategyId: strategy.id,
+              symbol: signal.symbol,
+              side: 'BUY',
+              entryDate: new Date(),
+              entryPrice: price,
+              shares,
+              totalCost,
+              indicatorsAtEntry: signal.indicators ?? undefined,
+            },
+          }),
+          prisma.simulation.update({
+            where: { id: simulation.id },
+            data: { currentCapital: { decrement: totalCost } },
+          }),
+          prisma.screenerSignal.update({
+            where: { id: signal.id },
+            data: { processed: true },
+          }),
+        ])
 
         results.tradesOpened++
         results.trades.push({
@@ -254,18 +259,19 @@ export async function POST(request: Request) {
           shares,
           value: totalCost,
         })
-
         results.signalsProcessed++
-
-        // Rate limit
-        await new Promise(r => setTimeout(r, 500))
       } catch (err) {
         results.errors.push(`Signal ${signal.symbol}: ${err instanceof Error ? err.message : 'Unknown'}`)
+        // Mark as processed to avoid retrying broken signals
+        try {
+          await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
+        } catch {}
       }
     }
 
     return NextResponse.json({
       success: true,
+      processingTimeMs: Date.now() - startTime,
       ...results,
     })
   } catch (error) {
