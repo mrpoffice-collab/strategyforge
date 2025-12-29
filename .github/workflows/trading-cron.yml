@@ -2,13 +2,11 @@ name: Trading Simulation Cron
 
 on:
   schedule:
-    # Swing trading schedule - 3 checks per day during extended hours
-    # Pre-market: 8 AM EST (13:00 UTC)
-    # Mid-day: 12 PM EST (17:00 UTC)
-    # After-hours: 5 PM EST (22:00 UTC)
-    - cron: '0 13 * * 1-5'  # 8 AM EST
-    - cron: '0 17 * * 1-5'  # 12 PM EST
-    - cron: '0 22 * * 1-5'  # 5 PM EST
+    # Swing trading - check every 30 minutes during extended market hours
+    # Extended hours: 4 AM - 8 PM EST = 9:00 - 01:00 UTC (next day)
+    # Using */30 for every 30 minutes
+    - cron: '0,30 9-23 * * 1-5'   # 4 AM - 6 PM EST (Mon-Fri)
+    - cron: '0,30 0-1 * * 2-6'    # 7 PM - 8 PM EST (Tue-Sat, since it's next UTC day)
   workflow_dispatch: # Allow manual trigger
 
 jobs:

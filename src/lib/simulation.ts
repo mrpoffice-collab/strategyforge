@@ -367,11 +367,15 @@ export async function runSimulationTick(simulationId: string): Promise<{
     // Only open new positions if we have capital
     if (maxPositionValue >= 100) {
       // Get all tradeable symbols and shuffle to avoid bias
-      // Scan 10 symbols per tick (rate limit friendly, ~15 sec per strategy)
+      // Scan up to 30 symbols per strategy, stop early if we find an entry
       const allSymbols = await getTradeableSymbols()
-      const shuffledSymbols = [...allSymbols].sort(() => Math.random() - 0.5).slice(0, 10)
+      const shuffledSymbols = [...allSymbols].sort(() => Math.random() - 0.5).slice(0, 30)
+      const startTime = Date.now()
+      const maxScanTime = 8000 // 8 seconds max per strategy for scanning
 
       for (const symbol of shuffledSymbols) {
+        // Time check - don't exceed scan time
+        if (Date.now() - startTime > maxScanTime) break
         // Check if we already have a position
         const existingPosition = await prisma.position.findUnique({
           where: {
