@@ -97,12 +97,15 @@ async function checkEntryConditions(
       case 'RSI':
         const rsi = indicators.rsi14
         if (rsi !== null) {
-          if (condition.comparison === 'below' && rsi >= (condition.threshold || 30)) {
+          const comp = condition.comparison
+          const threshold = condition.threshold || 30
+          // Support both formats: 'below'/'above' and 'less_than'/'greater_than'
+          if ((comp === 'below' || comp === 'less_than') && rsi >= threshold) {
             allConditionsMet = false
-          } else if (condition.comparison === 'above' && rsi <= (condition.threshold || 70)) {
+          } else if ((comp === 'above' || comp === 'greater_than') && rsi <= threshold) {
             allConditionsMet = false
           } else {
-            reasons.push(`RSI ${rsi.toFixed(1)} ${condition.comparison} ${condition.threshold}`)
+            reasons.push(`RSI ${rsi.toFixed(1)} ${comp} ${threshold}`)
           }
         } else {
           allConditionsMet = false
@@ -110,11 +113,17 @@ async function checkEntryConditions(
         break
 
       case 'MACD':
+      case 'MACD_CROSSOVER':
         if (macdData) {
-          // Check for crossover
-          if (condition.comparison === 'crossover_above' && macdData.histogram <= 0) {
+          const dir = (condition as { direction?: string }).direction
+          const comp = condition.comparison
+          // Support both: direction 'bullish'/'bearish' and comparison 'crossover_above'/'crossover_below'
+          const isBullish = dir === 'bullish' || comp === 'crossover_above'
+          const isBearish = dir === 'bearish' || comp === 'crossover_below'
+
+          if (isBullish && macdData.histogram <= 0) {
             allConditionsMet = false
-          } else if (condition.comparison === 'crossover_below' && macdData.histogram >= 0) {
+          } else if (isBearish && macdData.histogram >= 0) {
             allConditionsMet = false
           } else {
             reasons.push(`MACD crossover detected`)
@@ -125,10 +134,14 @@ async function checkEntryConditions(
         break
 
       case 'BollingerBands':
+      case 'BOLLINGER':
         if (bbands) {
-          if (condition.comparison === 'below_lower' && price >= bbands.lower) {
+          const comp = condition.comparison
+          const band = (condition as { band?: string }).band
+          // Support multiple formats
+          if ((comp === 'below_lower' || band === 'lower') && price >= bbands.lower) {
             allConditionsMet = false
-          } else if (condition.comparison === 'above_upper' && price <= bbands.upper) {
+          } else if ((comp === 'above_upper' || comp === 'price_above' || band === 'upper') && price <= bbands.upper) {
             allConditionsMet = false
           } else {
             reasons.push(`Price at Bollinger Band`)
@@ -139,12 +152,18 @@ async function checkEntryConditions(
         break
 
       case 'SMA':
+      case 'MA_CROSSOVER':
         const shortSMA = indicators.sma20
         const longSMA = indicators.sma50
         if (shortSMA && longSMA) {
-          if (condition.comparison === 'golden_cross' && shortSMA <= longSMA) {
+          const dir = (condition as { direction?: string }).direction
+          const comp = condition.comparison
+          const isGolden = dir === 'golden' || comp === 'golden_cross'
+          const isDeath = dir === 'death' || comp === 'death_cross'
+
+          if (isGolden && shortSMA <= longSMA) {
             allConditionsMet = false
-          } else if (condition.comparison === 'death_cross' && shortSMA >= longSMA) {
+          } else if (isDeath && shortSMA >= longSMA) {
             allConditionsMet = false
           } else {
             reasons.push(`SMA crossover detected`)
@@ -155,12 +174,14 @@ async function checkEntryConditions(
         break
 
       case 'Volume':
+      case 'VOLUME':
         if (volumes && volumes.length >= 30) {
-          const avgVolume = volumes.slice(-30).reduce((a, b) => a + b, 0) / 30
+          const period = (condition as { period?: number }).period || 30
+          const avgVolume = volumes.slice(-period).reduce((a, b) => a + b, 0) / period
           const currentVolume = volumes[volumes.length - 1]
-          const volumeMultiple = condition.threshold || 1.5
+          const multiplier = (condition as { multiplier?: number }).multiplier || condition.threshold || 1.5
 
-          if (currentVolume < avgVolume * volumeMultiple) {
+          if (currentVolume < avgVolume * multiplier) {
             allConditionsMet = false
           } else {
             reasons.push(`Volume ${(currentVolume / avgVolume).toFixed(1)}x average`)
@@ -171,22 +192,33 @@ async function checkEntryConditions(
         break
 
       case 'Fibonacci':
+      case 'FIBONACCI':
         if (highs && lows && highs.length >= 20) {
           const recentHigh = Math.max(...highs.slice(-20))
           const recentLow = Math.min(...lows.slice(-20))
           const range = recentHigh - recentLow
-          const fib382 = recentHigh - range * 0.382
-          const fib618 = recentHigh - range * 0.618
-          const tolerance = range * 0.02
+          const level = (condition as { level?: number }).level || 0.618
+          const fibLevel = recentHigh - range * level
+          const tolerance = (condition as { tolerance?: number }).tolerance || 0.02
+          const toleranceAbs = range * tolerance
 
-          if (Math.abs(price - fib618) <= tolerance || Math.abs(price - fib382) <= tolerance) {
-            reasons.push(`Near Fibonacci level`)
+          if (Math.abs(price - fibLevel) <= toleranceAbs) {
+            reasons.push(`Near Fibonacci ${level} level`)
           } else {
             allConditionsMet = false
           }
         } else {
           allConditionsMet = false
         }
+        break
+
+      // Skip conditions we don't have data for (like CANDLESTICK, TREND, PRICE_BREAKOUT)
+      case 'CANDLESTICK':
+      case 'TREND':
+      case 'PRICE_BREAKOUT':
+      case 'PRICE_VS_SMA':
+        // These require more complex analysis - skip for now, don't fail
+        reasons.push(`${condition.type} check skipped`)
         break
     }
   }
