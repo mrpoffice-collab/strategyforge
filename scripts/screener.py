@@ -6,11 +6,25 @@ Runs via GitHub Actions cron, writes results to Neon PostgreSQL.
 
 import os
 import json
+import math
 from datetime import datetime
 import psycopg2
 from tradingview_screener import Query, col
 
-DATABASE_URL = os.environ.get('DATABASE_URL')
+
+def clean_for_json(obj):
+    """Replace NaN/Inf values with None for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: clean_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_for_json(v) for v in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    return obj
+
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip().strip('"').strip("'")
 
 # Strategy filter configurations
 # Each strategy has specific indicator requirements for pre-filtering
@@ -41,23 +55,23 @@ STRATEGY_FILTERS = {
         'name': 'Bollinger Squeeze Breakout',
         'filters': [
             col('close').between(25, 100),
-            col('BB.width') < 15,  # Low volatility (squeeze)
-            col('close') > col('BB.upper'),  # Breaking out
+            col('Volatility.D') < 5,  # Low volatility
+            col('close') > col('BB.upper'),  # Breaking out above upper band
             col('Mom') > 0,  # Positive momentum
             col('volume') > 500000,
         ],
-        'columns': ['name', 'close', 'BB.upper', 'BB.lower', 'BB.width', 'Mom', 'volume', 'change']
+        'columns': ['name', 'close', 'BB.upper', 'BB.lower', 'Volatility.D', 'Mom', 'volume', 'change']
     },
     'macd_bb_volume': {
         'name': 'MACD-BB-Volume Triple Filter',
         'filters': [
             col('close').between(25, 100),
             col('MACD.macd') > col('MACD.signal'),  # MACD bullish
-            col('close') > col('BB.middle'),  # Above middle BB
+            col('close') > col('SMA20'),  # Above 20 SMA (proxy for middle BB)
             col('RSI').between(40, 70),  # Healthy RSI range
             col('volume') > 500000,
         ],
-        'columns': ['name', 'close', 'MACD.macd', 'MACD.signal', 'BB.middle', 'RSI', 'volume', 'change']
+        'columns': ['name', 'close', 'MACD.macd', 'MACD.signal', 'SMA20', 'RSI', 'volume', 'change']
     },
     'stochastic_rsi_sync': {
         'name': 'Stochastic-RSI Momentum Sync',
@@ -94,10 +108,10 @@ STRATEGY_FILTERS = {
         'filters': [
             col('close').between(25, 100),
             col('relative_volume_10d_calc') > 2.0,  # 2x average volume
-            col('close') > col('price_52_week_high') * 0.95,  # Near 52-week high
+            col('High.All') > 0,  # Has 52-week high data
             col('volume') > 1000000,
         ],
-        'columns': ['name', 'close', 'relative_volume_10d_calc', 'price_52_week_high', 'volume', 'change']
+        'columns': ['name', 'close', 'relative_volume_10d_calc', 'High.All', 'volume', 'change']
     },
 }
 
@@ -129,52 +143,44 @@ def save_to_database(signals: list):
         return
 
     conn = psycopg2.connect(DATABASE_URL)
+    conn.autocommit = True  # Each insert is its own transaction
     cur = conn.cursor()
 
-    # Create screener results table if not exists
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS "ScreenerSignal" (
-            id SERIAL PRIMARY KEY,
-            symbol VARCHAR(20) NOT NULL,
-            strategy_key VARCHAR(100) NOT NULL,
-            strategy_name VARCHAR(200),
-            price DECIMAL(10, 2),
-            indicators JSONB,
-            scanned_at TIMESTAMP DEFAULT NOW(),
-            processed BOOLEAN DEFAULT FALSE,
-            UNIQUE(symbol, strategy_key, DATE(scanned_at))
-        )
-    """)
-
-    # Clear old signals (older than 1 day)
-    cur.execute("""
-        DELETE FROM "ScreenerSignal"
-        WHERE scanned_at < NOW() - INTERVAL '1 day'
-    """)
+    # Table is managed by Prisma - just clear old signals
+    try:
+        cur.execute("""
+            DELETE FROM "ScreenerSignal"
+            WHERE scanned_at < NOW() - INTERVAL '1 day'
+        """)
+    except Exception as e:
+        print(f"  Error clearing old signals: {e}")
 
     # Insert new signals
+    saved_count = 0
     for signal in signals:
         try:
+            # Clean indicators of NaN values
+            clean_indicators = clean_for_json(signal['indicators'])
+
             cur.execute("""
-                INSERT INTO "ScreenerSignal" (symbol, strategy_key, strategy_name, price, indicators, scanned_at)
-                VALUES (%s, %s, %s, %s, %s, NOW())
-                ON CONFLICT (symbol, strategy_key, DATE(scanned_at))
-                DO UPDATE SET price = EXCLUDED.price, indicators = EXCLUDED.indicators, scanned_at = NOW()
+                INSERT INTO "ScreenerSignal" (symbol, strategy_key, strategy_name, price, indicators, scanned_at, processed)
+                VALUES (%s, %s, %s, %s, %s, NOW(), FALSE)
+                ON CONFLICT DO NOTHING
             """, (
                 signal['symbol'],
                 signal['strategy_key'],
                 signal['strategy_name'],
                 signal['price'],
-                json.dumps(signal['indicators'])
+                json.dumps(clean_indicators)
             ))
+            saved_count += 1
         except Exception as e:
             print(f"  Error saving {signal['symbol']}: {e}")
 
-    conn.commit()
     cur.close()
     conn.close()
 
-    print(f"Saved {len(signals)} signals to database")
+    print(f"Saved {saved_count}/{len(signals)} signals to database")
 
 
 def main():
