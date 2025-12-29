@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import prisma from '@/lib/prisma'
-import { TrendingUp, TrendingDown, Activity, DollarSign, Target, BarChart3 } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, DollarSign, Target, BarChart3, Radio, Clock, Briefcase } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,8 +37,36 @@ async function getStrategies() {
   })
 }
 
+async function getScreenerStats() {
+  const [totalSignals, unprocessedSignals] = await Promise.all([
+    prisma.screenerSignal.count(),
+    prisma.screenerSignal.count({ where: { processed: false } }),
+  ])
+  return { totalSignals, unprocessedSignals }
+}
+
+async function getRecentTrades() {
+  return prisma.trade.findMany({
+    take: 10,
+    orderBy: { entryDate: 'desc' },
+    include: { strategy: { select: { name: true } } },
+  })
+}
+
+async function getOpenPositions() {
+  return prisma.position.findMany({
+    include: { simulation: { include: { strategy: { select: { name: true } } } } },
+    orderBy: { entryDate: 'desc' },
+  })
+}
+
 export default async function Dashboard() {
-  const strategies = await getStrategies()
+  const [strategies, screenerStats, recentTrades, openPositions] = await Promise.all([
+    getStrategies(),
+    getScreenerStats(),
+    getRecentTrades(),
+    getOpenPositions(),
+  ])
 
   // Calculate aggregate stats
   const totalCapital = strategies.reduce((sum, s) => sum + (s.simulation?.currentCapital || 2000), 0)
@@ -75,7 +103,7 @@ export default async function Dashboard() {
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Aggregate Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
             <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
               <DollarSign className="w-4 h-4" />
@@ -105,6 +133,21 @@ export default async function Dashboard() {
               Avg Win Rate
             </div>
             <div className="text-2xl font-bold">{avgWinRate.toFixed(1)}%</div>
+          </div>
+          <div className="bg-gray-900 rounded-xl p-4 border border-blue-800/50">
+            <div className="flex items-center gap-2 text-blue-400 text-sm mb-1">
+              <Radio className="w-4 h-4" />
+              Screener Signals
+            </div>
+            <div className="text-2xl font-bold text-blue-400">{screenerStats.totalSignals}</div>
+            <div className="text-xs text-gray-500">{screenerStats.unprocessedSignals} pending</div>
+          </div>
+          <div className="bg-gray-900 rounded-xl p-4 border border-purple-800/50">
+            <div className="flex items-center gap-2 text-purple-400 text-sm mb-1">
+              <Briefcase className="w-4 h-4" />
+              Open Positions
+            </div>
+            <div className="text-2xl font-bold text-purple-400">{openPositions.length}</div>
           </div>
         </div>
 
@@ -196,6 +239,92 @@ export default async function Dashboard() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* Open Positions & Recent Trades */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          {/* Open Positions */}
+          <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-800 flex items-center gap-2">
+              <Briefcase className="w-5 h-5 text-purple-500" />
+              <h2 className="text-lg font-semibold">Open Positions</h2>
+              <span className="ml-auto text-sm text-gray-400">{openPositions.length} active</span>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {openPositions.length === 0 ? (
+                <div className="px-6 py-8 text-center text-gray-500">No open positions</div>
+              ) : (
+                <table className="w-full">
+                  <thead className="sticky top-0 bg-gray-900">
+                    <tr className="text-left text-xs text-gray-400 border-b border-gray-800">
+                      <th className="px-4 py-2">Symbol</th>
+                      <th className="px-4 py-2">Strategy</th>
+                      <th className="px-4 py-2 text-right">Shares</th>
+                      <th className="px-4 py-2 text-right">Entry</th>
+                      <th className="px-4 py-2 text-right">P&L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {openPositions.map((pos) => (
+                      <tr key={pos.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                        <td className="px-4 py-2 font-medium">{pos.symbol}</td>
+                        <td className="px-4 py-2 text-sm text-gray-400">{pos.simulation.strategy.name.slice(0, 20)}</td>
+                        <td className="px-4 py-2 text-right">{pos.shares}</td>
+                        <td className="px-4 py-2 text-right">${pos.entryPrice.toFixed(2)}</td>
+                        <td className={`px-4 py-2 text-right ${pos.unrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {pos.unrealizedPL >= 0 ? '+' : ''}${pos.unrealizedPL.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {/* Recent Trades */}
+          <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-800 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-green-500" />
+              <h2 className="text-lg font-semibold">Recent Trades</h2>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {recentTrades.length === 0 ? (
+                <div className="px-6 py-8 text-center text-gray-500">No trades yet</div>
+              ) : (
+                <table className="w-full">
+                  <thead className="sticky top-0 bg-gray-900">
+                    <tr className="text-left text-xs text-gray-400 border-b border-gray-800">
+                      <th className="px-4 py-2">Symbol</th>
+                      <th className="px-4 py-2">Strategy</th>
+                      <th className="px-4 py-2 text-right">Shares</th>
+                      <th className="px-4 py-2 text-right">Cost</th>
+                      <th className="px-4 py-2 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentTrades.map((trade) => (
+                      <tr key={trade.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                        <td className="px-4 py-2 font-medium">{trade.symbol}</td>
+                        <td className="px-4 py-2 text-sm text-gray-400">{trade.strategy.name.slice(0, 20)}</td>
+                        <td className="px-4 py-2 text-right">{trade.shares}</td>
+                        <td className="px-4 py-2 text-right">${trade.totalCost.toFixed(2)}</td>
+                        <td className="px-4 py-2 text-right">
+                          {trade.exitDate ? (
+                            <span className={`text-xs px-2 py-0.5 rounded ${trade.profitLoss && trade.profitLoss >= 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                              {trade.profitLoss && trade.profitLoss >= 0 ? '+' : ''}${trade.profitLoss?.toFixed(2) || '0'}
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-400">OPEN</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </div>
 
