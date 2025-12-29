@@ -230,6 +230,208 @@ export function calculateSMA(prices: number[], period: number): number | null {
   return recentPrices.reduce((a, b) => a + b, 0) / period
 }
 
+// Calculate ATR (Average True Range) - volatility measure
+export function calculateATR(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period: number = 14
+): number | null {
+  if (highs.length < period + 1) return null
+
+  const trueRanges: number[] = []
+  for (let i = 1; i < highs.length; i++) {
+    const tr = Math.max(
+      highs[i] - lows[i],
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i] - closes[i - 1])
+    )
+    trueRanges.push(tr)
+  }
+
+  // First ATR is simple average
+  let atr = trueRanges.slice(0, period).reduce((a, b) => a + b, 0) / period
+
+  // Smooth subsequent ATRs
+  for (let i = period; i < trueRanges.length; i++) {
+    atr = (atr * (period - 1) + trueRanges[i]) / period
+  }
+
+  return atr
+}
+
+// Calculate Stochastic Oscillator (%K and %D)
+export function calculateStochastic(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  kPeriod: number = 14,
+  dPeriod: number = 3
+): { k: number; d: number } | null {
+  if (closes.length < kPeriod + dPeriod) return null
+
+  const kValues: number[] = []
+
+  for (let i = kPeriod - 1; i < closes.length; i++) {
+    const periodHighs = highs.slice(i - kPeriod + 1, i + 1)
+    const periodLows = lows.slice(i - kPeriod + 1, i + 1)
+    const highestHigh = Math.max(...periodHighs)
+    const lowestLow = Math.min(...periodLows)
+    const k = highestHigh === lowestLow ? 50 : ((closes[i] - lowestLow) / (highestHigh - lowestLow)) * 100
+    kValues.push(k)
+  }
+
+  // %D is SMA of %K
+  const recentK = kValues.slice(-dPeriod)
+  const d = recentK.reduce((a, b) => a + b, 0) / dPeriod
+
+  return { k: kValues[kValues.length - 1], d }
+}
+
+// Calculate ADX (Average Directional Index) - trend strength
+export function calculateADX(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period: number = 14
+): { adx: number; plusDI: number; minusDI: number } | null {
+  if (highs.length < period * 2) return null
+
+  const plusDMs: number[] = []
+  const minusDMs: number[] = []
+  const trueRanges: number[] = []
+
+  for (let i = 1; i < highs.length; i++) {
+    const plusDM = Math.max(highs[i] - highs[i - 1], 0)
+    const minusDM = Math.max(lows[i - 1] - lows[i], 0)
+
+    if (plusDM > minusDM) {
+      plusDMs.push(plusDM)
+      minusDMs.push(0)
+    } else if (minusDM > plusDM) {
+      plusDMs.push(0)
+      minusDMs.push(minusDM)
+    } else {
+      plusDMs.push(0)
+      minusDMs.push(0)
+    }
+
+    const tr = Math.max(
+      highs[i] - lows[i],
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i] - closes[i - 1])
+    )
+    trueRanges.push(tr)
+  }
+
+  // Smoothed values
+  let smoothedPlusDM = plusDMs.slice(0, period).reduce((a, b) => a + b, 0)
+  let smoothedMinusDM = minusDMs.slice(0, period).reduce((a, b) => a + b, 0)
+  let smoothedTR = trueRanges.slice(0, period).reduce((a, b) => a + b, 0)
+
+  for (let i = period; i < plusDMs.length; i++) {
+    smoothedPlusDM = smoothedPlusDM - smoothedPlusDM / period + plusDMs[i]
+    smoothedMinusDM = smoothedMinusDM - smoothedMinusDM / period + minusDMs[i]
+    smoothedTR = smoothedTR - smoothedTR / period + trueRanges[i]
+  }
+
+  const plusDI = smoothedTR === 0 ? 0 : (smoothedPlusDM / smoothedTR) * 100
+  const minusDI = smoothedTR === 0 ? 0 : (smoothedMinusDM / smoothedTR) * 100
+
+  // Calculate DX and ADX
+  const diSum = plusDI + minusDI
+  const dx = diSum === 0 ? 0 : (Math.abs(plusDI - minusDI) / diSum) * 100
+
+  // For simplicity, return current DX as ADX estimate
+  // (Full ADX would need smoothing over more periods)
+  return { adx: dx, plusDI, minusDI }
+}
+
+// Calculate Bollinger Band Width (volatility squeeze indicator)
+export function calculateBBWidth(
+  prices: number[],
+  period: number = 20,
+  stdDev: number = 2
+): number | null {
+  const bands = calculateBollingerBands(prices, period, stdDev)
+  if (!bands) return null
+  return ((bands.upper - bands.lower) / bands.middle) * 100
+}
+
+// Detect RSI Divergence (bullish or bearish)
+export function detectRSIDivergence(
+  prices: number[],
+  period: number = 14,
+  lookback: number = 10
+): 'bullish' | 'bearish' | null {
+  if (prices.length < period + lookback) return null
+
+  const rsiValues: number[] = []
+  for (let i = period; i <= prices.length; i++) {
+    const slice = prices.slice(i - period - 1, i)
+    const rsi = calculateRSI(slice, period)
+    if (rsi !== null) rsiValues.push(rsi)
+  }
+
+  if (rsiValues.length < lookback) return null
+
+  const recentPrices = prices.slice(-lookback)
+  const recentRSI = rsiValues.slice(-lookback)
+
+  // Find lowest/highest points
+  const priceMin1 = Math.min(...recentPrices.slice(0, Math.floor(lookback / 2)))
+  const priceMin2 = Math.min(...recentPrices.slice(Math.floor(lookback / 2)))
+  const rsiMin1 = Math.min(...recentRSI.slice(0, Math.floor(lookback / 2)))
+  const rsiMin2 = Math.min(...recentRSI.slice(Math.floor(lookback / 2)))
+
+  // Bullish divergence: price makes lower low, RSI makes higher low
+  if (priceMin2 < priceMin1 && rsiMin2 > rsiMin1) {
+    return 'bullish'
+  }
+
+  const priceMax1 = Math.max(...recentPrices.slice(0, Math.floor(lookback / 2)))
+  const priceMax2 = Math.max(...recentPrices.slice(Math.floor(lookback / 2)))
+  const rsiMax1 = Math.max(...recentRSI.slice(0, Math.floor(lookback / 2)))
+  const rsiMax2 = Math.max(...recentRSI.slice(Math.floor(lookback / 2)))
+
+  // Bearish divergence: price makes higher high, RSI makes lower high
+  if (priceMax2 > priceMax1 && rsiMax2 < rsiMax1) {
+    return 'bearish'
+  }
+
+  return null
+}
+
+// Calculate Rate of Change (ROC) - momentum indicator
+export function calculateROC(prices: number[], period: number = 12): number | null {
+  if (prices.length < period + 1) return null
+  const currentPrice = prices[prices.length - 1]
+  const pastPrice = prices[prices.length - 1 - period]
+  return ((currentPrice - pastPrice) / pastPrice) * 100
+}
+
+// Detect MA Trend Alignment (all MAs stacked in order)
+export function detectMAAlignment(
+  prices: number[],
+  shortPeriod: number = 10,
+  mediumPeriod: number = 20,
+  longPeriod: number = 50
+): 'bullish' | 'bearish' | 'neutral' {
+  const shortMA = calculateSMA(prices, shortPeriod)
+  const mediumMA = calculateSMA(prices, mediumPeriod)
+  const longMA = calculateSMA(prices, longPeriod)
+
+  if (!shortMA || !mediumMA || !longMA) return 'neutral'
+
+  // Bullish alignment: short > medium > long
+  if (shortMA > mediumMA && mediumMA > longMA) return 'bullish'
+
+  // Bearish alignment: short < medium < long
+  if (shortMA < mediumMA && mediumMA < longMA) return 'bearish'
+
+  return 'neutral'
+}
+
 // Fallback list of known liquid stocks typically in $25-100 range
 const KNOWN_LIQUID_STOCKS = [
   // Tech

@@ -2,21 +2,104 @@ name: Trading Simulation Cron
 
 on:
   schedule:
-    # Swing trading - check every 30 minutes during extended market hours
+    # Batch processing - run every 10 minutes during extended hours
+    # Each run processes a different batch of symbols
     # Extended hours: 4 AM - 8 PM EST = 9:00 - 01:00 UTC (next day)
-    # Using */30 for every 30 minutes
-    - cron: '0,30 9-23 * * 1-5'   # 4 AM - 6 PM EST (Mon-Fri)
-    - cron: '0,30 0-1 * * 2-6'    # 7 PM - 8 PM EST (Tue-Sat, since it's next UTC day)
-  workflow_dispatch: # Allow manual trigger
+    - cron: '*/10 9-23 * * 1-5'   # Every 10 min, 4 AM - 6 PM EST (Mon-Fri)
+    - cron: '*/10 0-1 * * 2-6'    # Every 10 min, 7 PM - 8 PM EST (Tue-Sat UTC)
+
+    # Daily stock cache refresh at 3:30 AM EST (8:30 UTC)
+    - cron: '30 8 * * 1-5'
+
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to run'
+        required: true
+        default: 'batch'
+        type: choice
+        options:
+          - batch
+          - refresh
+          - tick
 
 jobs:
-  run-simulation:
+  # Determine which batch to run based on minute
+  process-batch:
+    if: github.event.inputs.action != 'refresh' && github.event.schedule != '30 8 * * 1-5'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Calculate batch number
+        id: batch
+        run: |
+          # Get current minute and calculate batch (0-5 for 6 batches)
+          MINUTE=$(date -u +%M)
+          BATCH=$((MINUTE / 10 % 6))
+          echo "batch=$BATCH" >> $GITHUB_OUTPUT
+          echo "Processing batch $BATCH at $(date -u)"
+
+      - name: Process batch
+        run: |
+          echo "Starting batch ${{ steps.batch.outputs.batch }} processing at $(date -u)"
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.APP_URL }}/api/simulation/batch?batch=${{ steps.batch.outputs.batch }}&size=20" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --max-time 120)
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+          if [ "$http_code" -ge 400 ]; then
+            echo "Request failed with status $http_code"
+            exit 1
+          fi
+
+          echo "Batch processing completed successfully"
+
+  # Daily refresh of eligible stocks cache
+  refresh-stocks:
+    if: github.event.schedule == '30 8 * * 1-5' || github.event.inputs.action == 'refresh'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Trigger Simulation Tick
+      - name: Refresh stock cache
         run: |
-          echo "Starting simulation tick at $(date -u)"
+          echo "Starting daily stock cache refresh at $(date -u)"
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.APP_URL }}/api/stocks/refresh?min=25&max=100&batch=100" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --max-time 300)
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+          if [ "$http_code" -ge 400 ]; then
+            echo "Request failed with status $http_code"
+            exit 1
+          fi
+
+          echo "Stock cache refresh completed"
+
+  # Legacy tick endpoint (if batch fails, fallback)
+  legacy-tick:
+    if: github.event.inputs.action == 'tick'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger legacy tick
+        run: |
+          echo "Starting legacy simulation tick at $(date -u)"
 
           response=$(curl -s -w "\n%{http_code}" -X POST \
             "${{ secrets.APP_URL }}/api/simulation/tick" \
@@ -34,5 +117,3 @@ jobs:
             echo "Request failed with status $http_code"
             exit 1
           fi
-
-          echo "Simulation tick completed successfully"

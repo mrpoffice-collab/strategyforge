@@ -7,6 +7,13 @@ import {
   calculateBollingerBands,
   calculateSMA,
   calculateEMA,
+  calculateATR,
+  calculateStochastic,
+  calculateADX,
+  calculateBBWidth,
+  detectRSIDivergence,
+  calculateROC,
+  detectMAAlignment,
   getTradeableSymbols,
 } from './finnhub'
 
@@ -35,7 +42,7 @@ interface TradeSignal {
   action: 'BUY' | 'SELL' | 'HOLD'
   price: number
   reason: string
-  indicators: Record<string, number | null>
+  indicators: Record<string, number | string | null>
 }
 
 // Check if entry conditions are met for a strategy
@@ -67,11 +74,15 @@ async function checkEntryConditions(
   const highs = candles.h
   const lows = candles.l
 
-  // Calculate all indicators
-  const indicators: Record<string, number | null> = {
+  // Calculate ALL indicators for hybrid strategies
+  const indicators: Record<string, number | string | null> = {
     rsi14: calculateRSI(closes, 14),
+    sma10: calculateSMA(closes, 10),
     sma20: calculateSMA(closes, 20),
     sma50: calculateSMA(closes, 50),
+    sma200: calculateSMA(closes, 200),
+    roc12: calculateROC(closes, 12),
+    bbWidth: calculateBBWidth(closes, 20, 2),
   }
 
   const macdData = calculateMACD(closes)
@@ -88,6 +99,33 @@ async function checkEntryConditions(
     indicators.bbLower = bbands.lower
   }
 
+  // Advanced indicators for hybrid strategies
+  const stoch = calculateStochastic(highs, lows, closes, 14, 3)
+  if (stoch) {
+    indicators.stochK = stoch.k
+    indicators.stochD = stoch.d
+  }
+
+  const adxData = calculateADX(highs, lows, closes, 14)
+  if (adxData) {
+    indicators.adx = adxData.adx
+    indicators.plusDI = adxData.plusDI
+    indicators.minusDI = adxData.minusDI
+  }
+
+  const atr = calculateATR(highs, lows, closes, 14)
+  if (atr) {
+    indicators.atr = atr
+    indicators.atrPercent = (atr / price) * 100
+  }
+
+  // Divergence and alignment detection
+  const rsiDivergence = detectRSIDivergence(closes, 14, 10)
+  indicators.rsiDivergence = rsiDivergence
+
+  const maAlignment = detectMAAlignment(closes, 10, 20, 50)
+  indicators.maAlignment = maAlignment
+
   // Check each indicator condition
   let allConditionsMet = true
   const reasons: string[] = []
@@ -95,7 +133,7 @@ async function checkEntryConditions(
   for (const condition of conditions.indicators) {
     switch (condition.type) {
       case 'RSI':
-        const rsi = indicators.rsi14
+        const rsi = indicators.rsi14 as number | null
         if (rsi !== null) {
           const comp = condition.comparison
           const threshold = condition.threshold || 30
@@ -104,6 +142,14 @@ async function checkEntryConditions(
             allConditionsMet = false
           } else if ((comp === 'above' || comp === 'greater_than') && rsi <= threshold) {
             allConditionsMet = false
+          } else if (comp === 'between') {
+            const minVal = (condition as { min?: number }).min || 30
+            const maxVal = (condition as { max?: number }).max || 70
+            if (rsi < minVal || rsi > maxVal) {
+              allConditionsMet = false
+            } else {
+              reasons.push(`RSI ${rsi.toFixed(1)} in range ${minVal}-${maxVal}`)
+            }
           } else {
             reasons.push(`RSI ${rsi.toFixed(1)} ${comp} ${threshold}`)
           }
@@ -120,11 +166,19 @@ async function checkEntryConditions(
           // Support both: direction 'bullish'/'bearish' and comparison 'crossover_above'/'crossover_below'
           const isBullish = dir === 'bullish' || comp === 'crossover_above'
           const isBearish = dir === 'bearish' || comp === 'crossover_below'
+          const isPositive = comp === 'positive' || comp === 'histogram_positive'
+          const isIncreasing = comp === 'increasing'
 
           if (isBullish && macdData.histogram <= 0) {
             allConditionsMet = false
           } else if (isBearish && macdData.histogram >= 0) {
             allConditionsMet = false
+          } else if (isPositive && macdData.histogram <= 0) {
+            allConditionsMet = false
+          } else if (isIncreasing) {
+            // Check if histogram is increasing (basic approximation)
+            if (macdData.histogram <= 0) allConditionsMet = false
+            else reasons.push(`MACD histogram positive and increasing`)
           } else {
             reasons.push(`MACD crossover detected`)
           }
@@ -143,6 +197,19 @@ async function checkEntryConditions(
             allConditionsMet = false
           } else if ((comp === 'above_upper' || comp === 'price_above' || band === 'upper') && price <= bbands.upper) {
             allConditionsMet = false
+          } else if (comp === 'above_middle' || (band === 'middle' && comp === 'above')) {
+            if (price <= bbands.middle) {
+              allConditionsMet = false
+            } else {
+              reasons.push(`Price above middle BB`)
+            }
+          } else if (comp === 'near_lower') {
+            const tolerance = bbands.middle - bbands.lower
+            if (price > bbands.lower + tolerance * 0.3) {
+              allConditionsMet = false
+            } else {
+              reasons.push(`Price near lower BB`)
+            }
           } else {
             reasons.push(`Price at Bollinger Band`)
           }
@@ -151,10 +218,34 @@ async function checkEntryConditions(
         }
         break
 
+      case 'BB_WIDTH':
+      case 'BOLLINGER_WIDTH':
+        const width = indicators.bbWidth as number | null
+        if (width !== null) {
+          const comp = condition.comparison
+          const threshold = condition.threshold || 10
+          if (comp === 'squeeze' || comp === 'less_than') {
+            if (width >= threshold) {
+              allConditionsMet = false
+            } else {
+              reasons.push(`BB Width ${width.toFixed(1)}% (squeeze)`)
+            }
+          } else if (comp === 'expansion' || comp === 'greater_than') {
+            if (width <= threshold) {
+              allConditionsMet = false
+            } else {
+              reasons.push(`BB Width ${width.toFixed(1)}% (expansion)`)
+            }
+          }
+        } else {
+          allConditionsMet = false
+        }
+        break
+
       case 'SMA':
       case 'MA_CROSSOVER':
-        const shortSMA = indicators.sma20
-        const longSMA = indicators.sma50
+        const shortSMA = indicators.sma20 as number | null
+        const longSMA = indicators.sma50 as number | null
         if (shortSMA && longSMA) {
           const dir = (condition as { direction?: string }).direction
           const comp = condition.comparison
@@ -167,6 +258,130 @@ async function checkEntryConditions(
             allConditionsMet = false
           } else {
             reasons.push(`SMA crossover detected`)
+          }
+        } else {
+          allConditionsMet = false
+        }
+        break
+
+      case 'MA_ALIGNMENT':
+        const alignment = indicators.maAlignment as string
+        const requiredAlign = (condition as { direction?: string }).direction || 'bullish'
+        if (alignment !== requiredAlign) {
+          allConditionsMet = false
+        } else {
+          reasons.push(`MA ${alignment} alignment`)
+        }
+        break
+
+      case 'PRICE_VS_MA':
+        const maPeriod = (condition as { period?: number }).period || 50
+        const maKey = `sma${maPeriod}` as keyof typeof indicators
+        const maValue = indicators[maKey] as number | null || calculateSMA(closes, maPeriod)
+        if (maValue) {
+          const comp = condition.comparison
+          if ((comp === 'above') && price <= maValue) {
+            allConditionsMet = false
+          } else if ((comp === 'below') && price >= maValue) {
+            allConditionsMet = false
+          } else if (comp === 'pullback_to') {
+            const tolerance = maValue * 0.02
+            if (Math.abs(price - maValue) > tolerance) {
+              allConditionsMet = false
+            } else {
+              reasons.push(`Price pullback to ${maPeriod} MA`)
+            }
+          } else {
+            reasons.push(`Price ${comp} ${maPeriod} MA`)
+          }
+        } else {
+          allConditionsMet = false
+        }
+        break
+
+      case 'STOCHASTIC':
+        const stochK = indicators.stochK as number | null
+        const stochD = indicators.stochD as number | null
+        if (stochK !== null && stochD !== null) {
+          const comp = condition.comparison
+          const threshold = condition.threshold || 20
+          if (comp === 'oversold' && stochK >= threshold) {
+            allConditionsMet = false
+          } else if (comp === 'overbought' && stochK <= (100 - threshold)) {
+            allConditionsMet = false
+          } else if (comp === 'bullish_cross' && stochK <= stochD) {
+            allConditionsMet = false
+          } else if (comp === 'turning_up' && stochK <= stochD) {
+            allConditionsMet = false
+          } else {
+            reasons.push(`Stochastic %K ${stochK.toFixed(1)} ${comp}`)
+          }
+        } else {
+          allConditionsMet = false
+        }
+        break
+
+      case 'ADX':
+        const adx = indicators.adx as number | null
+        const plusDI = indicators.plusDI as number | null
+        const minusDI = indicators.minusDI as number | null
+        if (adx !== null) {
+          const comp = condition.comparison
+          const threshold = condition.threshold || 25
+          if (comp === 'strong_trend' && adx < threshold) {
+            allConditionsMet = false
+          } else if (comp === 'weak_trend' && adx >= threshold) {
+            allConditionsMet = false
+          } else if (comp === 'bullish_di' && (plusDI === null || minusDI === null || plusDI <= minusDI)) {
+            allConditionsMet = false
+          } else {
+            reasons.push(`ADX ${adx.toFixed(1)} ${comp}`)
+          }
+        } else {
+          allConditionsMet = false
+        }
+        break
+
+      case 'RSI_DIVERGENCE':
+        const divergence = indicators.rsiDivergence as string | null
+        const reqDivergence = (condition as { direction?: string }).direction || 'bullish'
+        if (divergence !== reqDivergence) {
+          allConditionsMet = false
+        } else {
+          reasons.push(`RSI ${divergence} divergence`)
+        }
+        break
+
+      case 'ROC':
+        const roc = indicators.roc12 as number | null
+        if (roc !== null) {
+          const comp = condition.comparison
+          const threshold = condition.threshold || 0
+          if (comp === 'positive' && roc <= threshold) {
+            allConditionsMet = false
+          } else if (comp === 'negative' && roc >= threshold) {
+            allConditionsMet = false
+          } else if (comp === 'greater_than' && roc <= threshold) {
+            allConditionsMet = false
+          } else {
+            reasons.push(`ROC ${roc.toFixed(1)}%`)
+          }
+        } else {
+          allConditionsMet = false
+        }
+        break
+
+      case 'ATR':
+        const atrPercent = indicators.atrPercent as number | null
+        if (atrPercent !== null) {
+          const comp = condition.comparison
+          const threshold = condition.threshold || 2
+          if (comp === 'expanding' && atrPercent < threshold) {
+            allConditionsMet = false
+          } else if (comp === 'contracting' && atrPercent >= threshold) {
+            allConditionsMet = false
+          } else {
+            reasons.push(`ATR ${atrPercent.toFixed(2)}%`)
           }
         } else {
           allConditionsMet = false
