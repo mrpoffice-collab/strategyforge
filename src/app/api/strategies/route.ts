@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import type { Strategy, Simulation } from '@prisma/client'
+
+type StrategyWithSimulations = Strategy & { simulations: Simulation[] }
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +20,7 @@ export async function GET() {
     })
 
     // Format response with simulation data
-    const formatted = strategies.map((strategy) => {
+    const formatted = strategies.map((strategy: StrategyWithSimulations) => {
       const simulation = strategy.simulations[0]
       return {
         id: strategy.id,
