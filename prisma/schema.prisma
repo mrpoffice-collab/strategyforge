@@ -230,3 +230,30 @@ model ScreenerSignal {
   @@index([processed])
   @@map("ScreenerSignal")
 }
+
+// Cron execution log for debugging
+model CronLog {
+  id               Int        @id @default(autoincrement())
+  runType          String     // screener, process, both
+  startedAt        DateTime   @default(now())
+  completedAt      DateTime?
+  durationMs       Int?
+
+  // Screener stats
+  signalsFound     Int        @default(0)
+
+  // Process stats
+  signalsProcessed Int        @default(0)
+  tradesOpened     Int        @default(0)
+  tradesClosed     Int        @default(0)
+  positionsUpdated Int        @default(0)
+
+  // State at time of run
+  pendingSignals   Int        @default(0)
+  totalPositions   Int        @default(0)
+
+  success          Boolean    @default(true)
+  errorMessage     String?
+
+  @@index([startedAt])
+}

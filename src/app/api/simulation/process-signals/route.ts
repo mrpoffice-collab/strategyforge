@@ -24,6 +24,7 @@ const STRATEGY_KEY_MAP: Record<string, string> = {
 // POST /api/simulation/process-signals - Process screener signals into trades
 export async function POST(request: Request) {
   const startTime = Date.now()
+  let cronLogId: number | null = null
 
   try {
     // Auth check
@@ -33,6 +34,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Get initial state for logging
+    const [pendingSignals, totalPositions] = await Promise.all([
+      prisma.screenerSignal.count({ where: { processed: false } }),
+      prisma.position.count(),
+    ])
+
+    // Create cron log entry
+    const cronLog = await prisma.cronLog.create({
+      data: {
+        runType: 'process',
+        pendingSignals,
+        totalPositions,
+      },
+    })
+    cronLogId = cronLog.id
+    console.log(`[CronLog #${cronLogId}] Started - ${pendingSignals} pending signals, ${totalPositions} positions`)
+
     const results = {
       signalsProcessed: 0,
       tradesOpened: 0,
@@ -40,6 +58,7 @@ export async function POST(request: Request) {
       positionsUpdated: 0,
       errors: [] as string[],
       trades: [] as Array<{ symbol: string; strategy: string; action: string; shares: number; value: number }>,
+      skipReasons: {} as Record<string, number>, // Track why signals were skipped
     }
 
     // STEP 1: Check exits for existing positions (limited batch)
@@ -154,6 +173,7 @@ export async function POST(request: Request) {
       try {
         const strategyId = STRATEGY_KEY_MAP[signal.strategyKey]
         if (!strategyId) {
+          results.skipReasons['no_strategy_mapping'] = (results.skipReasons['no_strategy_mapping'] || 0) + 1
           await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
           continue
         }
@@ -164,6 +184,7 @@ export async function POST(request: Request) {
         })
 
         if (!strategy || strategy.simulations.length === 0) {
+          results.skipReasons['no_running_simulation'] = (results.skipReasons['no_running_simulation'] || 0) + 1
           await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
           continue
         }
@@ -171,6 +192,7 @@ export async function POST(request: Request) {
         const simulation = strategy.simulations[0]
 
         if (simulation.tradesCompleted >= simulation.tradesLimit) {
+          results.skipReasons['trade_limit_reached'] = (results.skipReasons['trade_limit_reached'] || 0) + 1
           await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
           continue
         }
@@ -181,6 +203,7 @@ export async function POST(request: Request) {
         })
 
         if (existingPosition) {
+          results.skipReasons['already_holding'] = (results.skipReasons['already_holding'] || 0) + 1
           await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
           continue
         }
@@ -188,6 +211,7 @@ export async function POST(request: Request) {
         // Use screener's price (already validated) - skip expensive API call
         const price = signal.price
         if (!price || price < 25 || price > 100) {
+          results.skipReasons['invalid_price'] = (results.skipReasons['invalid_price'] || 0) + 1
           await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
           continue
         }
@@ -198,6 +222,7 @@ export async function POST(request: Request) {
           select: { currentCapital: true },
         })
         if (!currentSim || currentSim.currentCapital < 100) {
+          results.skipReasons['insufficient_capital'] = (results.skipReasons['insufficient_capital'] || 0) + 1
           await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
           continue
         }
@@ -209,6 +234,7 @@ export async function POST(request: Request) {
 
         // CAPITAL CHECK: Never spend more than available
         if (totalCost > currentSim.currentCapital) {
+          results.skipReasons['cost_exceeds_capital'] = (results.skipReasons['cost_exceeds_capital'] || 0) + 1
           await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
           continue
         }
@@ -269,30 +295,71 @@ export async function POST(request: Request) {
       }
     }
 
+    const durationMs = Date.now() - startTime
+
+    // Update cron log with results
+    if (cronLogId) {
+      await prisma.cronLog.update({
+        where: { id: cronLogId },
+        data: {
+          completedAt: new Date(),
+          durationMs,
+          signalsProcessed: results.signalsProcessed,
+          tradesOpened: results.tradesOpened,
+          tradesClosed: results.tradesClosed,
+          positionsUpdated: results.positionsUpdated,
+          success: true,
+          errorMessage: results.errors.length > 0 ? results.errors.join('; ') : null,
+        },
+      })
+      console.log(`[CronLog #${cronLogId}] Completed in ${durationMs}ms - ${results.tradesOpened} opened, ${results.tradesClosed} closed`)
+    }
+
     return NextResponse.json({
       success: true,
-      processingTimeMs: Date.now() - startTime,
+      cronLogId,
+      processingTimeMs: durationMs,
       ...results,
     })
   } catch (error) {
     console.error('Process signals error:', error)
+
+    // Log failure
+    if (cronLogId) {
+      try {
+        await prisma.cronLog.update({
+          where: { id: cronLogId },
+          data: {
+            completedAt: new Date(),
+            durationMs: Date.now() - startTime,
+            success: false,
+            errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          },
+        })
+      } catch {}
+    }
+
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
+      { success: false, cronLogId, error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }
 }
 
-// GET - Check status of signals
+// GET - Check status of signals and recent cron logs
 export async function GET() {
   try {
-    const [totalSignals, unprocessedSignals, recentTrades] = await Promise.all([
+    const [totalSignals, unprocessedSignals, recentTrades, recentLogs] = await Promise.all([
       prisma.screenerSignal.count(),
       prisma.screenerSignal.count({ where: { processed: false } }),
       prisma.trade.findMany({
         take: 10,
         orderBy: { entryDate: 'desc' },
         include: { strategy: { select: { name: true } } },
+      }),
+      prisma.cronLog.findMany({
+        take: 20,
+        orderBy: { startedAt: 'desc' },
       }),
     ])
 
@@ -307,6 +374,21 @@ export async function GET() {
         totalCost: t.totalCost,
         status: t.exitDate ? 'CLOSED' : 'OPEN',
         pnl: t.profitLoss,
+      })),
+      cronLogs: recentLogs.map(log => ({
+        id: log.id,
+        runType: log.runType,
+        startedAt: log.startedAt,
+        completedAt: log.completedAt,
+        durationMs: log.durationMs,
+        signalsProcessed: log.signalsProcessed,
+        tradesOpened: log.tradesOpened,
+        tradesClosed: log.tradesClosed,
+        positionsUpdated: log.positionsUpdated,
+        pendingSignals: log.pendingSignals,
+        totalPositions: log.totalPositions,
+        success: log.success,
+        error: log.errorMessage,
       })),
     })
   } catch (error) {
