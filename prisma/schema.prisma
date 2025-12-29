@@ -213,3 +213,20 @@ model SystemConfig {
   value          String
   updatedAt      DateTime   @updatedAt
 }
+
+// Screener signals from TradingView pre-filter
+model ScreenerSignal {
+  id             Int        @id @default(autoincrement())
+  symbol         String
+  strategyKey    String     @map("strategy_key")
+  strategyName   String?    @map("strategy_name")
+  price          Float?
+  indicators     Json?
+  scannedAt      DateTime   @default(now()) @map("scanned_at")
+  processed      Boolean    @default(false)
+
+  @@unique([symbol, strategyKey, scannedAt], map: "screener_signal_unique")
+  @@index([strategyKey])
+  @@index([processed])
+  @@map("ScreenerSignal")
+}
