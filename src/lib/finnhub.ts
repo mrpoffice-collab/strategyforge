@@ -465,35 +465,111 @@ export function detectMAAlignment(
   return 'neutral'
 }
 
-// Fallback list of known liquid stocks typically in $25-100 range
+// Expanded list of liquid US stocks - comprehensive coverage
 const KNOWN_LIQUID_STOCKS = [
-  // Tech
+  // Semiconductors & Tech Hardware
   'AMD', 'INTC', 'MU', 'QCOM', 'AMAT', 'LRCX', 'MRVL', 'ON', 'SWKS', 'QRVO',
-  'PYPL', 'SQ', 'AFRM', 'SOFI', 'UPST', 'LC', 'HOOD', 'COIN',
-  'UBER', 'LYFT', 'DASH', 'ABNB', 'RBLX', 'SNAP', 'PINS', 'MTCH',
+  'TXN', 'ADI', 'MCHP', 'NXPI', 'MPWR', 'WOLF', 'SLAB', 'CRUS', 'SMTC',
+  'STM', 'KLAC', 'ENTG', 'MKSI', 'ACLS', 'FORM', 'UCTT', 'AEHR',
+  // Fintech & Payments
+  'PYPL', 'SQ', 'AFRM', 'SOFI', 'UPST', 'LC', 'HOOD', 'COIN', 'NU',
+  'BILL', 'TOST', 'PAYO', 'RELY', 'FLYW', 'MQ', 'DLO', 'PSFE',
+  // Software & Cloud
   'NET', 'CRWD', 'ZS', 'OKTA', 'DDOG', 'MDB', 'ESTC', 'GTLB',
-  // Consumer
-  'NKE', 'LULU', 'UAA', 'DECK', 'SKX', 'CROX',
-  'SBUX', 'CMG', 'DPZ', 'YUM', 'QSR', 'WING',
-  'TGT', 'COST', 'WMT', 'DG', 'DLTR', 'FIVE',
-  // Industrial
-  'F', 'GM', 'RIVN', 'LCID', 'NIO', 'XPEV', 'LI',
-  'BA', 'LMT', 'RTX', 'NOC', 'GD',
-  'CAT', 'DE', 'CNH', 'AGCO',
-  // Healthcare
+  'PATH', 'DOCN', 'CFLT', 'SUMO', 'NEWR', 'SPT', 'ALTR', 'FRSH',
+  'ASAN', 'MNDY', 'ZI', 'BRZE', 'PCTY', 'WDAY', 'HUBS', 'ZEN',
+  // Internet & Social
+  'UBER', 'LYFT', 'DASH', 'ABNB', 'RBLX', 'SNAP', 'PINS', 'MTCH',
+  'BMBL', 'SPOT', 'ROKU', 'Z', 'ZG', 'OPEN', 'CVNA', 'CHWY',
+  'ETSY', 'W', 'PTON', 'CHGG', 'UDMY', 'COUR', 'DUOL', 'LZ',
+  // Consumer Discretionary
+  'NKE', 'LULU', 'UAA', 'DECK', 'SKX', 'CROX', 'VFC', 'PVH',
+  'GOOS', 'TPR', 'CPRI', 'RL', 'GIII', 'SHOO', 'SCVL', 'BOOT',
+  // Restaurants & Food
+  'SBUX', 'CMG', 'DPZ', 'YUM', 'QSR', 'WING', 'SHAK', 'CAVA',
+  'WEN', 'JACK', 'PZZA', 'DNUT', 'BROS', 'SG', 'TXRH', 'CAKE',
+  'DENN', 'EAT', 'DRI', 'BLMN', 'RUTH', 'BJRI', 'PLAY', 'ARCO',
+  // Retail
+  'TGT', 'COST', 'WMT', 'DG', 'DLTR', 'FIVE', 'OLLI', 'BIG',
+  'BBY', 'WSM', 'RH', 'BURL', 'ROST', 'TJX', 'GPS', 'ANF',
+  'AEO', 'URBN', 'EXPR', 'PLCE', 'VSCO', 'BBW', 'LE', 'CRI',
+  // Automotive
+  'F', 'GM', 'RIVN', 'LCID', 'NIO', 'XPEV', 'LI', 'PSNY',
+  'FSR', 'GOEV', 'WKHS', 'RIDE', 'BLNK', 'CHPT', 'EVGO', 'DCFC',
+  'AAP', 'AZO', 'ORLY', 'GPC', 'AN', 'PAG', 'LAD', 'SAH',
+  // Aerospace & Defense
+  'BA', 'LMT', 'RTX', 'NOC', 'GD', 'LHX', 'TDG', 'HWM',
+  'TXT', 'SPR', 'HXL', 'CW', 'KTOS', 'RKLB', 'ASTS', 'LUNR',
+  // Industrial & Machinery
+  'CAT', 'DE', 'CNH', 'AGCO', 'TEX', 'MTW', 'PCAR', 'OSK',
+  'URI', 'GNRC', 'PWR', 'EME', 'TTC', 'FLR', 'J', 'ACM',
+  // Pharma & Biotech
   'PFE', 'MRK', 'BMY', 'ABBV', 'GILD', 'BIIB', 'REGN', 'VRTX',
-  'CVS', 'WBA', 'CI', 'HUM', 'UNH',
-  // Energy
-  'XOM', 'CVX', 'COP', 'EOG', 'PXD', 'DVN', 'OXY',
-  // Financial
-  'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'SCHW',
+  'MRNA', 'BNTX', 'SGEN', 'ALNY', 'IONS', 'BMRN', 'INCY', 'EXEL',
+  'NBIX', 'UTHR', 'HZNP', 'RARE', 'RCKT', 'BLUE', 'SRPT', 'QURE',
+  // Healthcare Services
+  'CVS', 'WBA', 'CI', 'HUM', 'UNH', 'CNC', 'MOH', 'OSCR',
+  'TDOC', 'DOCS', 'HIMS', 'AMWL', 'TALK', 'LFST', 'ACCD', 'SDC',
+  // Energy - Oil & Gas
+  'XOM', 'CVX', 'COP', 'EOG', 'PXD', 'DVN', 'OXY', 'MRO',
+  'HES', 'FANG', 'PR', 'CTRA', 'OVV', 'MGY', 'MTDR', 'CHRD',
+  'SM', 'PDCE', 'CPE', 'SBOW', 'REI', 'TELL', 'RRC', 'SWN',
+  // Renewables & Clean Energy
+  'ENPH', 'SEDG', 'FSLR', 'RUN', 'NOVA', 'ARRY', 'MAXN', 'JKS',
+  'CSIQ', 'DQ', 'SPWR', 'PLUG', 'BLDP', 'BE', 'STEM', 'GEVO',
+  // Banks & Financial
+  'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'SCHW', 'BK',
+  'USB', 'PNC', 'TFC', 'MTB', 'FITB', 'HBAN', 'CFG', 'RF',
+  'KEY', 'ZION', 'CMA', 'ALLY', 'COF', 'DFS', 'SYF', 'AXP',
+  // Insurance
+  'MET', 'PRU', 'AFL', 'AIG', 'TRV', 'ALL', 'PGR', 'CB',
+  'HIG', 'LNC', 'UNM', 'GL', 'ORI', 'KMPR', 'SIGI', 'WRB',
   // Media/Telecom
-  'DIS', 'NFLX', 'WBD', 'PARA', 'FOX',
-  'T', 'VZ', 'TMUS',
+  'DIS', 'NFLX', 'WBD', 'PARA', 'FOX', 'CMCSA', 'CHTR', 'LBRDA',
+  'T', 'VZ', 'TMUS', 'LUMN', 'FTR', 'USM', 'ATUS', 'SIRI',
   // Travel
-  'UAL', 'DAL', 'LUV', 'AAL', 'JBLU',
-  'MAR', 'HLT', 'H', 'WH',
-  'CCL', 'RCL', 'NCLH'
+  'UAL', 'DAL', 'LUV', 'AAL', 'JBLU', 'SAVE', 'ALK', 'HA',
+  'MAR', 'HLT', 'H', 'WH', 'IHG', 'CHH', 'PLYA', 'HTHT',
+  'CCL', 'RCL', 'NCLH', 'EXPE', 'BKNG', 'TRIP', 'TRVG', 'MMYT',
+  // REITs & Real Estate
+  'SPG', 'PLD', 'AMT', 'CCI', 'EQIX', 'PSA', 'DLR', 'WELL',
+  'VTR', 'AVB', 'EQR', 'MAA', 'UDR', 'CPT', 'ESS', 'AIV',
+  'O', 'NNN', 'WPC', 'STORE', 'ADC', 'EPRT', 'STAG', 'IIPR',
+  // Materials & Mining
+  'FCX', 'NEM', 'GOLD', 'AA', 'CLF', 'X', 'NUE', 'STLD',
+  'RS', 'CMC', 'ATI', 'HAYN', 'CRS', 'KALU', 'CENX', 'ARNC',
+  'DOW', 'LYB', 'EMN', 'CE', 'HUN', 'OLN', 'WLK', 'TROX',
+  // Utilities
+  'NEE', 'DUK', 'SO', 'D', 'AEP', 'XEL', 'EXC', 'ED',
+  'WEC', 'ES', 'DTE', 'EIX', 'FE', 'PPL', 'AES', 'NRG',
+  // Gaming & Casinos
+  'LVS', 'MGM', 'WYNN', 'CZR', 'BYD', 'PENN', 'DKNG', 'GENI',
+  'RSI', 'RRR', 'BALY', 'CHDN', 'GDEN', 'IGT', 'SGMS', 'EVRI',
+  // Consumer Staples
+  'PG', 'KO', 'PEP', 'MDLZ', 'KHC', 'GIS', 'K', 'CPB',
+  'SJM', 'HSY', 'MKC', 'HRL', 'TSN', 'CAG', 'POST', 'INGR',
+  // Medical Devices
+  'ABT', 'MDT', 'SYK', 'BSX', 'EW', 'ZBH', 'ISRG', 'DXCM',
+  'HOLX', 'ALGN', 'ILMN', 'TFX', 'PODD', 'IRTC', 'LIVN', 'NVST',
+  // Enterprise Tech
+  'IBM', 'ORCL', 'SAP', 'ACN', 'INFY', 'WIT', 'CTSH', 'EPAM',
+  'GLOB', 'GDYN', 'TASK', 'TTEC', 'VG', 'DXC', 'LDOS', 'SAIC',
+  // Cybersecurity
+  'PANW', 'FTNT', 'S', 'CYBR', 'TENB', 'VRNS', 'SAIL', 'RPD',
+  'QLYS', 'FEYE', 'BB', 'NLOK', 'AVGO', 'CHKP', 'AKAM', 'FFIV',
+  // E-commerce & Digital
+  'AMZN', 'EBAY', 'MELI', 'SE', 'SHOP', 'WIX', 'BIGC', 'VTEX',
+  'GDRX', 'HIMS', 'PRCH', 'CART', 'FVRR', 'UPWK', 'TASK', 'KNX',
+  // Fitness & Wellness
+  'PLNT', 'XPOF', 'GYM', 'CLUB', 'BODY', 'PTON',
+  // Packaging
+  'BALL', 'CCK', 'BERY', 'SEE', 'SLGN', 'SON', 'GPK', 'OI',
+  // Transportation & Logistics
+  'UPS', 'FDX', 'XPO', 'CHRW', 'JBHT', 'ODFL', 'SAIA', 'ARCB',
+  'KNX', 'WERN', 'HUBG', 'SNDR', 'GXO', 'EXPD', 'FWRD', 'ECHO',
+  // Homebuilders
+  'DHI', 'LEN', 'PHM', 'NVR', 'TOL', 'KBH', 'MDC', 'MTH',
+  'TMHC', 'MHO', 'CCS', 'GRBK', 'BLD', 'BLDR', 'BZH', 'SKY'
 ]
 
 // Cache for all US symbols (refreshed periodically)

@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     const { searchParams } = new URL(request.url)
     const minPrice = parseFloat(searchParams.get('min') || '25')
     const maxPrice = parseFloat(searchParams.get('max') || '100')
-    const batchSize = parseInt(searchParams.get('batch') || '100')
+    const batchSize = parseInt(searchParams.get('batch') || '400') // Scan more stocks by default
 
     // Get all known liquid symbols
     const allSymbols = await getTradeableSymbols()
