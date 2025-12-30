@@ -281,16 +281,16 @@ export default function AnalysisPage() {
             {/* Session Breakdown */}
             <div className="bg-gray-800 p-6 rounded-lg">
               <h2 className="text-xl font-bold mb-4">Exit Session Analysis</h2>
-              <p className="text-gray-400 text-sm mb-4">Performance breakdown by market session when trades were closed</p>
+              <p className="text-gray-400 text-sm mb-4">Performance breakdown by market session when trades were closed (times shown in CST)</p>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {(['PRE_MARKET', 'REGULAR', 'AFTER_HOURS', 'CLOSED'] as const).map(session => {
                   const data = analysis.sessionBreakdown[session]
                   const total = data.wins + data.losses
                   const winRate = total > 0 ? (data.wins / total) * 100 : 0
                   const sessionLabels = {
-                    PRE_MARKET: { name: 'Pre-Market', time: '4:00-9:30 AM', color: 'text-orange-400' },
-                    REGULAR: { name: 'Regular Hours', time: '9:30 AM-4:00 PM', color: 'text-green-400' },
-                    AFTER_HOURS: { name: 'After-Hours', time: '4:00-8:00 PM', color: 'text-blue-400' },
+                    PRE_MARKET: { name: 'Pre-Market', time: '3:00-8:30 AM CST', color: 'text-orange-400' },
+                    REGULAR: { name: 'Regular Hours', time: '8:30 AM-3:00 PM CST', color: 'text-green-400' },
+                    AFTER_HOURS: { name: 'After-Hours', time: '3:00-7:00 PM CST', color: 'text-blue-400' },
                     CLOSED: { name: 'Market Closed', time: 'Outside Hours', color: 'text-gray-400' },
                   }
                   const label = sessionLabels[session]
