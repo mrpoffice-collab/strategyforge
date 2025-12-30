@@ -214,20 +214,27 @@ export default async function StrategyPage({ params }: PageProps) {
                       <th className="px-6 py-3 font-medium">Symbol</th>
                       <th className="px-6 py-3 font-medium text-right">Entry</th>
                       <th className="px-6 py-3 font-medium text-right">Current</th>
+                      <th className="px-6 py-3 font-medium text-right">%</th>
                       <th className="px-6 py-3 font-medium text-right">P&L</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {positions.map((pos) => (
-                      <tr key={pos.id} className="border-b border-slate-200/50">
-                        <td className="px-6 py-4 font-medium">{pos.symbol}</td>
-                        <td className="px-6 py-4 text-right">${pos.entryPrice.toFixed(2)}</td>
-                        <td className="px-6 py-4 text-right">${pos.currentPrice.toFixed(2)}</td>
-                        <td className={`px-6 py-4 text-right font-medium ${pos.unrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {pos.unrealizedPL >= 0 ? '+' : ''}${pos.unrealizedPL.toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
+                    {positions.map((pos) => {
+                      const pctChange = ((pos.currentPrice - pos.entryPrice) / pos.entryPrice) * 100
+                      return (
+                        <tr key={pos.id} className="border-b border-slate-200/50">
+                          <td className="px-6 py-4 font-medium">{pos.symbol}</td>
+                          <td className="px-6 py-4 text-right">${pos.entryPrice.toFixed(2)}</td>
+                          <td className="px-6 py-4 text-right">${pos.currentPrice.toFixed(2)}</td>
+                          <td className={`px-6 py-4 text-right font-medium ${pctChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {pctChange >= 0 ? '+' : ''}{pctChange.toFixed(2)}%
+                          </td>
+                          <td className={`px-6 py-4 text-right font-medium ${pos.unrealizedPL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {pos.unrealizedPL >= 0 ? '+' : ''}${pos.unrealizedPL.toFixed(2)}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               ) : (
