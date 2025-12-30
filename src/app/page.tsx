@@ -73,9 +73,14 @@ export default async function Dashboard() {
   const cashAvailable = strategies.reduce((sum, s) => sum + (s.simulation?.currentCapital || 2000), 0)
   const totalPL = strategies.reduce((sum, s) => sum + (s.simulation?.totalPL || 0), 0)
   const totalTrades = strategies.reduce((sum, s) => sum + (s.simulation?.tradesCompleted || 0), 0)
-  const avgWinRate = strategies.length > 0
-    ? strategies.reduce((sum, s) => sum + (s.simulation?.winRate || 0), 0) / strategies.length
-    : 0
+
+  // Actual win rate based on closed trades (not average of strategy win rates)
+  const totalWins = strategies.reduce((sum, s) => {
+    const winRate = s.simulation?.winRate || 0
+    const trades = s.simulation?.tradesCompleted || 0
+    return sum + Math.round((winRate / 100) * trades)
+  }, 0)
+  const actualWinRate = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 0
 
   // Position values
   const investedValue = openPositions.reduce((sum, p) => sum + p.currentValue, 0)
@@ -174,9 +179,12 @@ export default async function Dashboard() {
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
             <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
               <Target className="w-4 h-4" />
-              Avg Win Rate
+              Win Rate
             </div>
-            <div className="text-2xl font-bold">{avgWinRate.toFixed(1)}%</div>
+            <div className={`text-2xl font-bold ${actualWinRate >= 50 ? 'text-green-500' : actualWinRate >= 40 ? 'text-yellow-500' : 'text-red-500'}`}>
+              {actualWinRate.toFixed(1)}%
+            </div>
+            <div className="text-xs text-gray-500">{totalWins}W / {totalTrades - totalWins}L</div>
           </div>
           <div className="bg-gray-900 rounded-xl p-4 border border-blue-800/50">
             <div className="flex items-center gap-2 text-blue-400 text-sm mb-1">

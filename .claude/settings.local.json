@@ -8,7 +8,9 @@
       "Bash(git push)",
       "Bash(npx prisma db push:*)",
       "Bash(npx dotenv:*)",
-      "Bash(npx vercel --prod)"
+      "Bash(npx vercel --prod)",
+      "Bash(npx vercel:*)",
+      "Bash(python -c:*)"
     ]
   }
 }
