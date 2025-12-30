@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import prisma from '@/lib/prisma'
-import { TrendingUp, TrendingDown, Activity, DollarSign, Target, BarChart3, Radio, Clock, Briefcase } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, DollarSign, Target, BarChart3, Radio, Clock, Briefcase, Wallet, PiggyBank } from 'lucide-react'
 import { RefreshButton } from '@/components/RefreshButton'
 
 export const dynamic = 'force-dynamic'
@@ -70,12 +70,17 @@ export default async function Dashboard() {
   ])
 
   // Calculate aggregate stats
-  const totalCapital = strategies.reduce((sum, s) => sum + (s.simulation?.currentCapital || 2000), 0)
+  const cashAvailable = strategies.reduce((sum, s) => sum + (s.simulation?.currentCapital || 2000), 0)
   const totalPL = strategies.reduce((sum, s) => sum + (s.simulation?.totalPL || 0), 0)
   const totalTrades = strategies.reduce((sum, s) => sum + (s.simulation?.tradesCompleted || 0), 0)
   const avgWinRate = strategies.length > 0
     ? strategies.reduce((sum, s) => sum + (s.simulation?.winRate || 0), 0) / strategies.length
     : 0
+
+  // Position values
+  const investedValue = openPositions.reduce((sum, p) => sum + p.currentValue, 0)
+  const unrealizedPL = openPositions.reduce((sum, p) => sum + p.unrealizedPL, 0)
+  const totalPortfolioValue = cashAvailable + investedValue
 
   // Sort by P&L for ranking
   const rankedStrategies = [...strategies].sort((a, b) =>
@@ -111,21 +116,45 @@ export default async function Dashboard() {
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Aggregate Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
             <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
               <DollarSign className="w-4 h-4" />
-              Total Capital
+              Portfolio Value
             </div>
-            <div className="text-2xl font-bold">${totalCapital.toLocaleString()}</div>
+            <div className="text-2xl font-bold">${totalPortfolioValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+          </div>
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+              <Wallet className="w-4 h-4" />
+              Cash
+            </div>
+            <div className="text-2xl font-bold">${cashAvailable.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+          </div>
+          <div className="bg-gray-900 rounded-xl p-4 border border-purple-800/50">
+            <div className="flex items-center gap-2 text-purple-400 text-sm mb-1">
+              <PiggyBank className="w-4 h-4" />
+              Invested
+            </div>
+            <div className="text-2xl font-bold text-purple-400">${investedValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+            <div className="text-xs text-gray-500">{openPositions.length} positions</div>
+          </div>
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+              {unrealizedPL >= 0 ? <TrendingUp className="w-4 h-4 text-green-500" /> : <TrendingDown className="w-4 h-4 text-red-500" />}
+              Unrealized P&L
+            </div>
+            <div className={`text-2xl font-bold ${unrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {unrealizedPL >= 0 ? '+' : ''}${unrealizedPL.toFixed(0)}
+            </div>
           </div>
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
             <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
               {totalPL >= 0 ? <TrendingUp className="w-4 h-4 text-green-500" /> : <TrendingDown className="w-4 h-4 text-red-500" />}
-              Total P&L
+              Realized P&L
             </div>
             <div className={`text-2xl font-bold ${totalPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {totalPL >= 0 ? '+' : ''}${totalPL.toFixed(2)}
+              {totalPL >= 0 ? '+' : ''}${totalPL.toFixed(0)}
             </div>
           </div>
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
@@ -145,17 +174,10 @@ export default async function Dashboard() {
           <div className="bg-gray-900 rounded-xl p-4 border border-blue-800/50">
             <div className="flex items-center gap-2 text-blue-400 text-sm mb-1">
               <Radio className="w-4 h-4" />
-              Screener Signals
+              Signals
             </div>
             <div className="text-2xl font-bold text-blue-400">{screenerStats.totalSignals}</div>
             <div className="text-xs text-gray-500">{screenerStats.unprocessedSignals} pending</div>
-          </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-purple-800/50">
-            <div className="flex items-center gap-2 text-purple-400 text-sm mb-1">
-              <Briefcase className="w-4 h-4" />
-              Open Positions
-            </div>
-            <div className="text-2xl font-bold text-purple-400">{openPositions.length}</div>
           </div>
         </div>
 
