@@ -10,7 +10,8 @@
       "Bash(npx dotenv:*)",
       "Bash(npx vercel --prod)",
       "Bash(npx vercel:*)",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Skill(ux-audit)"
     ]
   }
 }

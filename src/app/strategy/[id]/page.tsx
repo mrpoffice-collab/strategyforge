@@ -48,8 +48,19 @@ export default async function StrategyPage({ params }: PageProps) {
   const positionValue = positions.reduce((sum, p) => sum + p.currentValue, 0)
   const portfolioValue = cash + positionValue
 
-  const entryConditions = strategy.entryConditions as { indicators: Array<{ type: string; [key: string]: unknown }>; priceRange: { min: number; max: number } }
-  const exitConditions = strategy.exitConditions as { indicators: Array<{ type: string; [key: string]: unknown }>; profitTarget: number; stopLoss: number }
+  // Handle null/undefined conditions gracefully
+  const rawEntry = strategy.entryConditions as { indicators?: Array<{ type: string; [key: string]: unknown }>; priceRange?: { min: number; max: number } } | null
+  const rawExit = strategy.exitConditions as { indicators?: Array<{ type: string; [key: string]: unknown }>; profitTarget?: number; stopLoss?: number } | null
+
+  const entryConditions = {
+    indicators: rawEntry?.indicators || [],
+    priceRange: rawEntry?.priceRange || { min: 25, max: 100 }
+  }
+  const exitConditions = {
+    indicators: rawExit?.indicators || [],
+    profitTarget: rawExit?.profitTarget || 10,
+    stopLoss: rawExit?.stopLoss || 5
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
