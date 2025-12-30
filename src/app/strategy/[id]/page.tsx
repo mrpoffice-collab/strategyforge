@@ -32,7 +32,8 @@ async function getStrategy(id: string) {
 
 export default async function StrategyPage({ params }: PageProps) {
   const { id } = await params
-  const strategy = await getStrategy(id)
+  const decodedId = decodeURIComponent(id)
+  const strategy = await getStrategy(decodedId)
 
   if (!strategy) {
     notFound()

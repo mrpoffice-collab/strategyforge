@@ -236,7 +236,7 @@ export default async function Dashboard() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <Link href={`/strategy/${strategy.id}`} className="hover:text-blue-400 transition-colors">
+                        <Link href={`/strategy/${encodeURIComponent(strategy.id)}`} className="hover:text-blue-400 transition-colors">
                           <div className="font-medium">{strategy.name}</div>
                           <div className="text-sm text-gray-500">{strategy.whitepaperAuthor}</div>
                         </Link>
