@@ -311,23 +311,27 @@ export default async function Dashboard() {
                     <tr className="text-left text-xs text-gray-400 border-b border-gray-800">
                       <th className="px-4 py-2">Symbol</th>
                       <th className="px-4 py-2">Strategy</th>
-                      <th className="px-4 py-2 text-right">Shares</th>
                       <th className="px-4 py-2 text-right">Entry</th>
+                      <th className="px-4 py-2 text-right">Current</th>
                       <th className="px-4 py-2 text-right">P&L</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {openPositions.map((pos) => (
-                      <tr key={pos.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                        <td className="px-4 py-2 font-medium">{pos.symbol}</td>
-                        <td className="px-4 py-2 text-sm text-gray-400">{pos.simulation.strategy.name.slice(0, 20)}</td>
-                        <td className="px-4 py-2 text-right">{pos.shares}</td>
-                        <td className="px-4 py-2 text-right">${pos.entryPrice.toFixed(2)}</td>
-                        <td className={`px-4 py-2 text-right ${pos.unrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {pos.unrealizedPL >= 0 ? '+' : ''}${pos.unrealizedPL.toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
+                    {openPositions.map((pos) => {
+                      const plPercent = ((pos.currentPrice - pos.entryPrice) / pos.entryPrice) * 100
+                      return (
+                        <tr key={pos.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                          <td className="px-4 py-2 font-medium">{pos.symbol}</td>
+                          <td className="px-4 py-2 text-sm text-gray-400">{pos.simulation.strategy.name.slice(0, 15)}</td>
+                          <td className="px-4 py-2 text-right text-gray-400">${pos.entryPrice.toFixed(2)}</td>
+                          <td className="px-4 py-2 text-right">${pos.currentPrice.toFixed(2)}</td>
+                          <td className={`px-4 py-2 text-right ${plPercent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            <div className="font-medium">{plPercent >= 0 ? '+' : ''}{plPercent.toFixed(2)}%</div>
+                            <div className="text-xs opacity-70">{pos.unrealizedPL >= 0 ? '+' : ''}${pos.unrealizedPL.toFixed(0)}</div>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               )}
