@@ -42,6 +42,11 @@ export default async function StrategyPage({ params }: PageProps) {
   const positions = simulation?.positions || []
   const trades = simulation?.trades || []
 
+  // Calculate portfolio value (cash + positions at current price)
+  const cash = simulation?.currentCapital || 2000
+  const positionValue = positions.reduce((sum, p) => sum + p.currentValue, 0)
+  const portfolioValue = cash + positionValue
+
   const entryConditions = strategy.entryConditions as { indicators: Array<{ type: string; [key: string]: unknown }>; priceRange: { min: number; max: number } }
   const exitConditions = strategy.exitConditions as { indicators: Array<{ type: string; [key: string]: unknown }>; profitTarget: number; stopLoss: number }
 
@@ -110,7 +115,7 @@ export default async function StrategyPage({ params }: PageProps) {
               <DollarSign className="w-4 h-4" />
               Portfolio Value
             </div>
-            <div className="text-2xl font-bold">${(simulation?.currentCapital || 2000).toLocaleString()}</div>
+            <div className="text-2xl font-bold">${portfolioValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
           </div>
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
             <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">

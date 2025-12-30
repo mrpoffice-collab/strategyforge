@@ -23,6 +23,8 @@ interface StrategyMetrics {
   // Capital & Returns
   initialCapital: number
   currentCapital: number
+  positionValue: number
+  portfolioValue: number
   totalReturn: number
   totalReturnPercent: number
 
@@ -220,6 +222,8 @@ export async function GET() {
 
         initialCapital: simulation.initialCapital,
         currentCapital: simulation.currentCapital,
+        positionValue,
+        portfolioValue: simulation.currentCapital + positionValue,
         totalReturn,
         totalReturnPercent,
 

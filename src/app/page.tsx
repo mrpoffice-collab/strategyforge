@@ -82,6 +82,13 @@ export default async function Dashboard() {
   const unrealizedPL = openPositions.reduce((sum, p) => sum + p.unrealizedPL, 0)
   const totalPortfolioValue = cashAvailable + investedValue
 
+  // Calculate per-strategy position values
+  const positionValueByStrategy = new Map<string, number>()
+  for (const pos of openPositions) {
+    const strategyId = pos.simulation.strategy.name
+    positionValueByStrategy.set(strategyId, (positionValueByStrategy.get(strategyId) || 0) + pos.currentValue)
+  }
+
   // Sort by P&L for ranking
   const rankedStrategies = [...strategies].sort((a, b) =>
     (b.simulation?.totalPL || 0) - (a.simulation?.totalPL || 0)
@@ -212,7 +219,9 @@ export default async function Dashboard() {
                   const winRate = sim?.winRate || 0
                   const trades = sim?.tradesCompleted || 0
                   const limit = sim?.tradesLimit || 200
-                  const capital = sim?.currentCapital || 2000
+                  const cash = sim?.currentCapital || 2000
+                  const positionValue = positionValueByStrategy.get(strategy.name) || 0
+                  const portfolioValue = cash + positionValue
 
                   return (
                     <tr key={strategy.id} className="border-b border-gray-800/50 hover:bg-gray-800/50 transition-colors">
@@ -250,7 +259,7 @@ export default async function Dashboard() {
                         <div className="text-sm text-gray-500">/ {limit}</div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="font-medium">${capital.toLocaleString()}</div>
+                        <div className="font-medium">${portfolioValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                       </td>
                       <td className="px-6 py-4 text-center">
                         {sim ? (

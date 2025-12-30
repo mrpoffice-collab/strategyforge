@@ -9,6 +9,8 @@ interface StrategyMetrics {
   strategyName: string
   initialCapital: number
   currentCapital: number
+  positionValue: number
+  portfolioValue: number
   totalReturn: number
   totalReturnPercent: number
   totalTrades: number
@@ -396,8 +398,8 @@ export default function AnalysisPage() {
 
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
                   <div>
-                    <div className="text-gray-400">Capital</div>
-                    <div>{formatCurrency(strategy.currentCapital)}</div>
+                    <div className="text-gray-400">Portfolio</div>
+                    <div>{formatCurrency(strategy.portfolioValue)}</div>
                   </div>
                   <div>
                     <div className="text-gray-400">Total Trades</div>
