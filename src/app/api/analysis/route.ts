@@ -60,13 +60,33 @@ interface CorrelationData {
   correlation: number // -1 to 1
 }
 
+interface SessionBreakdown {
+  PRE_MARKET: { wins: number; losses: number; totalPL: number }
+  REGULAR: { wins: number; losses: number; totalPL: number }
+  AFTER_HOURS: { wins: number; losses: number; totalPL: number }
+  CLOSED: { wins: number; losses: number; totalPL: number }
+}
+
 interface AnalysisResponse {
   generatedAt: string
   simulationDays: number
+
+  // Portfolio summary (matches dashboard)
+  initialCapital: number
+  cashAvailable: number
+  investedValue: number
+  portfolioValue: number
+  realizedPL: number
+  unrealizedPL: number
+
+  // Legacy fields for compatibility
   totalCapitalDeployed: number
   totalCurrentValue: number
   overallReturn: number
   overallReturnPercent: number
+
+  // Session breakdown
+  sessionBreakdown: SessionBreakdown
 
   strategies: StrategyMetrics[]
   rankings: {
@@ -259,9 +279,46 @@ export async function GET() {
       return bRatio - aRatio
     })
 
-    // Calculate totals
+    // Calculate totals (legacy)
     const totalCapitalDeployed = strategyMetrics.reduce((sum, s) => sum + s.initialCapital, 0)
     const totalCurrentValue = strategyMetrics.reduce((sum, s) => sum + s.currentCapital + s.unrealizedPL, 0)
+
+    // Portfolio summary (matches dashboard)
+    const initialCapital = totalCapitalDeployed
+    const cashAvailable = strategyMetrics.reduce((sum, s) => sum + s.currentCapital, 0)
+    const totalUnrealizedPL = strategyMetrics.reduce((sum, s) => sum + s.unrealizedPL, 0)
+    const totalRealizedPL = strategyMetrics.reduce((sum, s) => sum + (s.totalReturn - s.unrealizedPL), 0)
+
+    // Get all positions for invested value
+    const allPositions = await prisma.position.findMany()
+    const investedValue = allPositions.reduce((sum, p) => sum + p.currentValue, 0)
+    const portfolioValue = cashAvailable + investedValue
+
+    // Session breakdown - get all closed trades
+    const allClosedTrades = await prisma.trade.findMany({
+      where: { exitDate: { not: null } },
+      select: { exitSession: true, profitLoss: true },
+    })
+
+    const sessionBreakdown: SessionBreakdown = {
+      PRE_MARKET: { wins: 0, losses: 0, totalPL: 0 },
+      REGULAR: { wins: 0, losses: 0, totalPL: 0 },
+      AFTER_HOURS: { wins: 0, losses: 0, totalPL: 0 },
+      CLOSED: { wins: 0, losses: 0, totalPL: 0 },
+    }
+
+    for (const trade of allClosedTrades) {
+      const session = (trade.exitSession as keyof SessionBreakdown) || 'REGULAR'
+      const pl = trade.profitLoss ?? 0
+      if (sessionBreakdown[session]) {
+        if (pl >= 0) {
+          sessionBreakdown[session].wins++
+        } else {
+          sessionBreakdown[session].losses++
+        }
+        sessionBreakdown[session].totalPL += pl
+      }
+    }
 
     // Get simulation start date
     const firstTrade = await prisma.trade.findFirst({
@@ -293,12 +350,25 @@ export async function GET() {
     const response: AnalysisResponse = {
       generatedAt: new Date().toISOString(),
       simulationDays,
+
+      // Portfolio summary (matches dashboard)
+      initialCapital,
+      cashAvailable,
+      investedValue,
+      portfolioValue,
+      realizedPL: totalRealizedPL,
+      unrealizedPL: totalUnrealizedPL,
+
+      // Legacy fields
       totalCapitalDeployed,
       totalCurrentValue,
       overallReturn: totalCurrentValue - totalCapitalDeployed,
       overallReturnPercent: totalCapitalDeployed > 0
         ? ((totalCurrentValue - totalCapitalDeployed) / totalCapitalDeployed) * 100
         : 0,
+
+      // Session breakdown
+      sessionBreakdown,
 
       strategies: strategyMetrics,
       rankings: {

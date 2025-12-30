@@ -33,13 +33,34 @@ interface StrategyMetrics {
   unrealizedPL: number
 }
 
+interface SessionStats {
+  wins: number
+  losses: number
+  totalPL: number
+}
+
 interface AnalysisData {
   generatedAt: string
   simulationDays: number
+  // Portfolio summary (matches dashboard)
+  initialCapital: number
+  cashAvailable: number
+  investedValue: number
+  portfolioValue: number
+  realizedPL: number
+  unrealizedPL: number
+  // Legacy
   totalCapitalDeployed: number
   totalCurrentValue: number
   overallReturn: number
   overallReturnPercent: number
+  // Session breakdown
+  sessionBreakdown: {
+    PRE_MARKET: SessionStats
+    REGULAR: SessionStats
+    AFTER_HOURS: SessionStats
+    CLOSED: SessionStats
+  }
   strategies: StrategyMetrics[]
   rankings: {
     byReturn: string[]
@@ -223,27 +244,82 @@ export default function AnalysisPage() {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-gray-800 p-6 rounded-lg">
-                <div className="text-gray-400 text-sm">Total Capital Deployed</div>
-                <div className="text-2xl font-bold">{formatCurrency(analysis.totalCapitalDeployed)}</div>
+            {/* Portfolio Summary Cards (matches dashboard) */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="bg-gray-800 p-4 rounded-lg">
+                <div className="text-gray-400 text-sm">Portfolio Value</div>
+                <div className="text-xl font-bold">{formatCurrency(analysis.portfolioValue)}</div>
               </div>
-              <div className="bg-gray-800 p-6 rounded-lg">
-                <div className="text-gray-400 text-sm">Current Value</div>
-                <div className="text-2xl font-bold">{formatCurrency(analysis.totalCurrentValue)}</div>
+              <div className="bg-gray-800 p-4 rounded-lg">
+                <div className="text-gray-400 text-sm">Cash</div>
+                <div className="text-xl font-bold">{formatCurrency(analysis.cashAvailable)}</div>
               </div>
-              <div className="bg-gray-800 p-6 rounded-lg">
-                <div className="text-gray-400 text-sm">Overall Return</div>
-                <div className={`text-2xl font-bold ${analysis.overallReturn >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {formatCurrency(analysis.overallReturn)}
+              <div className="bg-gray-800 p-4 rounded-lg border border-purple-800/50">
+                <div className="text-purple-400 text-sm">Invested</div>
+                <div className="text-xl font-bold text-purple-400">{formatCurrency(analysis.investedValue)}</div>
+              </div>
+              <div className="bg-gray-800 p-4 rounded-lg">
+                <div className="text-gray-400 text-sm">Unrealized P&L</div>
+                <div className={`text-xl font-bold ${analysis.unrealizedPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {analysis.unrealizedPL >= 0 ? '+' : ''}{formatCurrency(analysis.unrealizedPL)}
                 </div>
               </div>
-              <div className="bg-gray-800 p-6 rounded-lg">
-                <div className="text-gray-400 text-sm">Return %</div>
-                <div className={`text-2xl font-bold ${analysis.overallReturnPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              <div className="bg-gray-800 p-4 rounded-lg">
+                <div className="text-gray-400 text-sm">Realized P&L</div>
+                <div className={`text-xl font-bold ${analysis.realizedPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {analysis.realizedPL >= 0 ? '+' : ''}{formatCurrency(analysis.realizedPL)}
+                </div>
+              </div>
+              <div className="bg-gray-800 p-4 rounded-lg">
+                <div className="text-gray-400 text-sm">Total Return</div>
+                <div className={`text-xl font-bold ${analysis.overallReturnPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {formatPercent(analysis.overallReturnPercent)}
                 </div>
+              </div>
+            </div>
+
+            {/* Session Breakdown */}
+            <div className="bg-gray-800 p-6 rounded-lg">
+              <h2 className="text-xl font-bold mb-4">Exit Session Analysis</h2>
+              <p className="text-gray-400 text-sm mb-4">Performance breakdown by market session when trades were closed</p>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {(['PRE_MARKET', 'REGULAR', 'AFTER_HOURS', 'CLOSED'] as const).map(session => {
+                  const data = analysis.sessionBreakdown[session]
+                  const total = data.wins + data.losses
+                  const winRate = total > 0 ? (data.wins / total) * 100 : 0
+                  const sessionLabels = {
+                    PRE_MARKET: { name: 'Pre-Market', time: '4:00-9:30 AM', color: 'text-orange-400' },
+                    REGULAR: { name: 'Regular Hours', time: '9:30 AM-4:00 PM', color: 'text-green-400' },
+                    AFTER_HOURS: { name: 'After-Hours', time: '4:00-8:00 PM', color: 'text-blue-400' },
+                    CLOSED: { name: 'Market Closed', time: 'Outside Hours', color: 'text-gray-400' },
+                  }
+                  const label = sessionLabels[session]
+                  return (
+                    <div key={session} className="bg-gray-700 p-4 rounded-lg">
+                      <div className={`font-bold ${label.color}`}>{label.name}</div>
+                      <div className="text-xs text-gray-500 mb-2">{label.time}</div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="text-gray-400">Trades:</span> {total}
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Win Rate:</span>{' '}
+                          <span className={winRate >= 50 ? 'text-green-400' : 'text-red-400'}>
+                            {winRate.toFixed(0)}%
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-green-400">{data.wins}W</span>
+                          {' / '}
+                          <span className="text-red-400">{data.losses}L</span>
+                        </div>
+                        <div className={data.totalPL >= 0 ? 'text-green-400' : 'text-red-400'}>
+                          {data.totalPL >= 0 ? '+' : ''}{formatCurrency(data.totalPL)}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
 
