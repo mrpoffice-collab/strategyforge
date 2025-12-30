@@ -5,6 +5,20 @@ import { getQuote } from '@/lib/finnhub'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+// Determine market session based on current time (EST/EDT)
+function getMarketSession(): string {
+  const now = new Date()
+  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const hours = estTime.getHours()
+  const minutes = estTime.getMinutes()
+  const timeInMinutes = hours * 60 + minutes
+
+  if (timeInMinutes >= 240 && timeInMinutes < 570) return 'PRE_MARKET'
+  if (timeInMinutes >= 570 && timeInMinutes < 960) return 'REGULAR'
+  if (timeInMinutes >= 960 && timeInMinutes < 1200) return 'AFTER_HOURS'
+  return 'CLOSED'
+}
+
 // Process in batches to avoid timeout (runs every 5 min)
 const MAX_SIGNALS_PER_RUN = 30
 const MAX_EXITS_PER_RUN = 15
@@ -111,10 +125,11 @@ export async function POST(request: Request) {
           const totalWins = position.simulation.winCount + (isWin ? 1 : 0)
 
           // Batch all updates together
+          const exitSession = getMarketSession()
           await Promise.all([
             prisma.trade.updateMany({
               where: { simulationId: position.simulationId, symbol: position.symbol, exitDate: null },
-              data: { exitDate: new Date(), exitPrice: currentPrice, profitLoss, profitLossPercent: pnlPercent, exitReason },
+              data: { exitDate: new Date(), exitPrice: currentPrice, profitLoss, profitLossPercent: pnlPercent, exitReason, exitSession },
             }),
             prisma.position.delete({ where: { id: position.id } }),
             prisma.simulation.update({

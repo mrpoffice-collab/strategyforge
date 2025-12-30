@@ -94,6 +94,7 @@ model Trade {
   holdTimeHours  Float?
 
   exitReason     String?    // PROFIT_TARGET, STOP_LOSS, SIGNAL, TIME_LIMIT
+  exitSession    String?    // PRE_MARKET, REGULAR, AFTER_HOURS
 
   // Indicator values at entry (for analysis)
   indicatorsAtEntry Json?

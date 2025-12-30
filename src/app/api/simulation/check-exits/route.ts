@@ -5,6 +5,31 @@ import { getQuote } from '@/lib/finnhub'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
+// Determine market session based on current time (EST/EDT)
+function getMarketSession(): string {
+  const now = new Date()
+  // Convert to Eastern Time
+  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const hours = estTime.getHours()
+  const minutes = estTime.getMinutes()
+  const timeInMinutes = hours * 60 + minutes
+
+  // Pre-market: 4:00 AM - 9:30 AM EST (240 - 570 minutes)
+  if (timeInMinutes >= 240 && timeInMinutes < 570) {
+    return 'PRE_MARKET'
+  }
+  // Regular: 9:30 AM - 4:00 PM EST (570 - 960 minutes)
+  if (timeInMinutes >= 570 && timeInMinutes < 960) {
+    return 'REGULAR'
+  }
+  // After-hours: 4:00 PM - 8:00 PM EST (960 - 1200 minutes)
+  if (timeInMinutes >= 960 && timeInMinutes < 1200) {
+    return 'AFTER_HOURS'
+  }
+  // Outside trading hours
+  return 'CLOSED'
+}
+
 // Lightweight endpoint - ONLY checks exits on existing positions
 // No signal processing, no trade opening
 export async function POST(request: Request) {
@@ -22,7 +47,8 @@ export async function POST(request: Request) {
       positionsChecked: 0,
       positionsUpdated: 0,
       tradesClosed: 0,
-      exits: [] as Array<{ symbol: string; strategy: string; reason: string; pnl: number }>,
+      marketSession: getMarketSession(),
+      exits: [] as Array<{ symbol: string; strategy: string; reason: string; pnl: number; session: string }>,
       errors: [] as string[],
     }
 
@@ -70,6 +96,7 @@ export async function POST(request: Request) {
           const isWin = profitLoss >= 0
           const totalTrades = position.simulation.tradesCompleted + 1
           const totalWins = position.simulation.winCount + (isWin ? 1 : 0)
+          const exitSession = getMarketSession()
 
           await Promise.all([
             prisma.trade.updateMany({
@@ -80,6 +107,7 @@ export async function POST(request: Request) {
                 profitLoss,
                 profitLossPercent: pnlPercent,
                 exitReason,
+                exitSession,
                 holdTimeHours: (Date.now() - new Date(position.entryDate).getTime()) / (1000 * 60 * 60),
               },
             }),
@@ -104,6 +132,7 @@ export async function POST(request: Request) {
             strategy: position.simulation.strategy.name,
             reason: exitReason,
             pnl: profitLoss,
+            session: exitSession,
           })
         } else {
           // Update position's current price
