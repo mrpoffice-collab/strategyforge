@@ -50,6 +50,23 @@ export default async function StrategyPage({ params }: PageProps) {
       {/* Header */}
       <header className="border-b border-gray-800 bg-gray-900">
         <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="flex items-center justify-between mb-4">
+            <Link href="/" className="hover:opacity-80 transition-opacity">
+              <span className="text-xl font-bold text-white">StrategyForge</span>
+            </Link>
+            <div className="flex items-center gap-4">
+              <Link
+                href="/analysis"
+                className="text-sm text-gray-400 hover:text-white transition-colors"
+              >
+                Analysis
+              </Link>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                Live
+              </span>
+            </div>
+          </div>
           <Link href="/" className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-4 transition-colors">
             <ArrowLeft className="w-4 h-4" />
             Back to Leaderboard

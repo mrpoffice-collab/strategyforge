@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import prisma from '@/lib/prisma'
 import { TrendingUp, TrendingDown, Activity, DollarSign, Target, BarChart3, Radio, Clock, Briefcase } from 'lucide-react'
+import { RefreshButton } from '@/components/RefreshButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,11 +88,18 @@ export default async function Dashboard() {
       <header className="border-b border-gray-800 bg-gray-900">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
-            <div>
+            <Link href="/" className="hover:opacity-80 transition-opacity">
               <h1 className="text-2xl font-bold text-white">StrategyForge</h1>
               <p className="text-gray-400 text-sm">Autonomous Swing Trading Simulator</p>
-            </div>
-            <div className="flex items-center gap-2">
+            </Link>
+            <div className="flex items-center gap-4">
+              <RefreshButton />
+              <Link
+                href="/analysis"
+                className="text-sm text-gray-400 hover:text-white transition-colors"
+              >
+                Analysis
+              </Link>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
                 <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                 Live
@@ -328,16 +336,6 @@ export default async function Dashboard() {
           </div>
         </div>
 
-        {/* Start Simulation Button */}
-        <div className="mt-8 flex justify-center">
-          <Link
-            href="/api/simulation/start"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors"
-          >
-            <Activity className="w-5 h-5" />
-            Start All Simulations
-          </Link>
-        </div>
       </main>
     </div>
   )
