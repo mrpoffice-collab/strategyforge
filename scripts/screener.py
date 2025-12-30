@@ -201,7 +201,7 @@ def save_to_database(signals: list):
     except Exception as e:
         print(f"  Error clearing old signals: {e}")
 
-    # Insert new signals
+    # Insert or update signals (upsert on symbol+strategy_key)
     saved_count = 0
     for signal in signals:
         try:
@@ -211,7 +211,12 @@ def save_to_database(signals: list):
             cur.execute("""
                 INSERT INTO "ScreenerSignal" (symbol, strategy_key, strategy_name, price, indicators, scanned_at, processed)
                 VALUES (%s, %s, %s, %s, %s, NOW(), FALSE)
-                ON CONFLICT DO NOTHING
+                ON CONFLICT (symbol, strategy_key) DO UPDATE SET
+                    price = EXCLUDED.price,
+                    indicators = EXCLUDED.indicators,
+                    scanned_at = NOW(),
+                    processed = FALSE
+                WHERE "ScreenerSignal".processed = FALSE
             """, (
                 signal['symbol'],
                 signal['strategy_key'],

@@ -226,7 +226,7 @@ model ScreenerSignal {
   scannedAt      DateTime   @default(now()) @map("scanned_at")
   processed      Boolean    @default(false)
 
-  @@unique([symbol, strategyKey, scannedAt], map: "screener_signal_unique")
+  @@unique([symbol, strategyKey], map: "screener_signal_unique")
   @@index([strategyKey])
   @@index([processed])
   @@map("ScreenerSignal")
