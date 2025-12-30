@@ -52,27 +52,49 @@ export async function POST(request: Request) {
       errors: [] as string[],
     }
 
-    // Get ALL positions (this is a lightweight check)
-    const positions = await prisma.position.findMany({
+    // Get ALL positions and shuffle for fair coverage
+    const allPositions = await prisma.position.findMany({
       include: { simulation: { include: { strategy: true } } },
-      orderBy: { entryDate: 'asc' },
     })
+
+    // Shuffle positions so different ones get checked each run
+    const positions = [...allPositions].sort(() => Math.random() - 0.5)
 
     results.positionsChecked = positions.length
 
+    // Get unique symbols to fetch quotes for
+    const uniqueSymbols = [...new Set(positions.map(p => p.symbol))]
+
+    // Fetch quotes in parallel (batch of 5 at a time to avoid rate limits)
+    const quoteCache = new Map<string, number>()
+    const BATCH_SIZE = 5
+
+    for (let i = 0; i < uniqueSymbols.length && Date.now() - startTime < 15000; i += BATCH_SIZE) {
+      const batch = uniqueSymbols.slice(i, i + BATCH_SIZE)
+      const quotePromises = batch.map(async (symbol) => {
+        try {
+          const quote = await getQuote(symbol)
+          if (quote && quote.c > 0) {
+            quoteCache.set(symbol, quote.c)
+          }
+        } catch {
+          // Ignore errors, will use cached price
+        }
+      })
+      await Promise.all(quotePromises)
+      // Small delay between batches to respect rate limits
+      if (i + BATCH_SIZE < uniqueSymbols.length) {
+        await new Promise(r => setTimeout(r, 200))
+      }
+    }
+
     for (const position of positions) {
-      // Time check - keep it fast
+      // Time check
       if (Date.now() - startTime > 25000) break
 
       try {
-        // Get current price
-        let currentPrice = position.currentPrice
-        try {
-          const quote = await getQuote(position.symbol)
-          if (quote && quote.c > 0) currentPrice = quote.c
-        } catch {
-          // Use cached price if API fails
-        }
+        // Use cached quote or fall back to position's stored price
+        const currentPrice = quoteCache.get(position.symbol) || position.currentPrice
 
         const exitConds = position.simulation.strategy.exitConditions as {
           profitTarget: number
