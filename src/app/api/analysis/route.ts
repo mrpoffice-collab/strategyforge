@@ -3,6 +3,19 @@ import prisma from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
+// Calculate market session from a date (EST/EDT)
+function getMarketSessionFromDate(date: Date): string {
+  const estTime = new Date(date.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const hours = estTime.getHours()
+  const minutes = estTime.getMinutes()
+  const timeInMinutes = hours * 60 + minutes
+
+  if (timeInMinutes >= 240 && timeInMinutes < 570) return 'PRE_MARKET'
+  if (timeInMinutes >= 570 && timeInMinutes < 960) return 'REGULAR'
+  if (timeInMinutes >= 960 && timeInMinutes < 1200) return 'AFTER_HOURS'
+  return 'CLOSED'
+}
+
 interface StrategyMetrics {
   strategyId: string
   strategyName: string
@@ -297,7 +310,7 @@ export async function GET() {
     // Session breakdown - get all closed trades
     const allClosedTrades = await prisma.trade.findMany({
       where: { exitDate: { not: null } },
-      select: { exitSession: true, profitLoss: true },
+      select: { exitDate: true, exitSession: true, profitLoss: true },
     })
 
     const sessionBreakdown: SessionBreakdown = {
@@ -308,7 +321,9 @@ export async function GET() {
     }
 
     for (const trade of allClosedTrades) {
-      const session = (trade.exitSession as keyof SessionBreakdown) || 'REGULAR'
+      // Use recorded session, or calculate from exitDate if not recorded
+      const session = (trade.exitSession as keyof SessionBreakdown) ||
+        (trade.exitDate ? getMarketSessionFromDate(new Date(trade.exitDate)) as keyof SessionBreakdown : 'CLOSED')
       const pl = trade.profitLoss ?? 0
       if (sessionBreakdown[session]) {
         if (pl >= 0) {
