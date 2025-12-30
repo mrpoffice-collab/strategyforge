@@ -1,27 +1,15 @@
-name: Trading Simulation Cron
+name: Opportunity Scanner
 
 on:
   schedule:
-    # Run every 5 minutes during extended market hours (Mon-Fri)
-    # Pre-market 4 AM - After-hours 7 PM CST = 10:00 - 01:00 UTC
+    # Every 5 minutes during extended market hours (4 AM - 7 PM CST)
     - cron: '*/5 10-23 * * 1-5'
     - cron: '*/5 0 * * 2-6'
 
   workflow_dispatch:
-    inputs:
-      action:
-        description: 'Action to run'
-        required: true
-        default: 'both'
-        type: choice
-        options:
-          - screener
-          - process
-          - both
 
 jobs:
-  # Combined job: Scan + Process every 5 minutes
-  trading-cycle:
+  scan-and-trade:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -37,7 +25,6 @@ jobs:
         run: pip install -r scripts/requirements.txt
 
       - name: Run TradingView screener
-        if: github.event.inputs.action != 'process'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
@@ -47,11 +34,9 @@ jobs:
           echo "Completed at $(date -u)"
 
       - name: Wait for DB sync
-        if: github.event.inputs.action != 'process'
         run: sleep 3
 
       - name: Process signals into trades
-        if: github.event.inputs.action != 'screener'
         run: |
           echo "=== Processing Signals ==="
           echo "Started at $(date -u)"

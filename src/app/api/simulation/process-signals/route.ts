@@ -19,6 +19,11 @@ const STRATEGY_KEY_MAP: Record<string, string> = {
   'rsi_mean_reversion': 'strat_rsi_mean_reversion',
   'macd_momentum': 'strat_macd_momentum_crossover',
   'volume_breakout': 'strat_volume_breakout_scanner',
+  // Trend-following strategies
+  '52_week_high_breakout': 'cmjrkxxny00008sfmhyrvkbcs',
+  'adx_trend_rider': 'cmjrkxxtk00018sfm4vkptvmd',
+  'triple_ma_trend': 'cmjrkxxyc00028sfmj434l2m0',
+  'momentum_persistence': 'cmjrkxy3900038sfm5l2ldi05',
 }
 
 // POST /api/simulation/process-signals - Process screener signals into trades

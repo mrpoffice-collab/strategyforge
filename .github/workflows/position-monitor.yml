@@ -1,0 +1,38 @@
+name: Position Monitor
+
+on:
+  schedule:
+    # Every 2 minutes during extended market hours (4 AM - 7 PM CST)
+    - cron: '*/2 10-23 * * 1-5'
+    - cron: '*/2 0 * * 2-6'
+
+  workflow_dispatch:
+
+jobs:
+  check-exits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check position exits
+        run: |
+          echo "=== Position Monitor ==="
+          echo "Started at $(date -u)"
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.APP_URL }}/api/simulation/check-exits" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --max-time 30)
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+          if [ "$http_code" -ge 400 ]; then
+            echo "Request failed with status $http_code"
+            exit 1
+          fi
+
+          echo "Completed at $(date -u)"
