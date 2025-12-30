@@ -207,7 +207,8 @@ export default async function Dashboard() {
                   <th className="px-6 py-3 font-medium text-right">P&L</th>
                   <th className="px-6 py-3 font-medium text-right">Win Rate</th>
                   <th className="px-6 py-3 font-medium text-right">Trades</th>
-                  <th className="px-6 py-3 font-medium text-right">Portfolio</th>
+                  <th className="px-6 py-3 font-medium text-right">Cash</th>
+                  <th className="px-6 py-3 font-medium text-right">Invested</th>
                   <th className="px-6 py-3 font-medium text-center">Status</th>
                 </tr>
               </thead>
@@ -259,7 +260,10 @@ export default async function Dashboard() {
                         <div className="text-sm text-gray-500">/ {limit}</div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="font-medium">${portfolioValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                        <div className="font-medium">${cash.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="font-medium text-purple-400">${positionValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                       </td>
                       <td className="px-6 py-4 text-center">
                         {sim ? (
