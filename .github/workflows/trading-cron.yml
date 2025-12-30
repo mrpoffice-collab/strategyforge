@@ -2,9 +2,10 @@ name: Trading Simulation Cron
 
 on:
   schedule:
-    # Run every 5 minutes during market hours (Mon-Fri)
-    # Market hours: 8:30 AM - 3 PM CST = 9:30 AM - 4 PM EST = 14:30 - 21:00 UTC
-    - cron: '*/5 14-21 * * 1-5'
+    # Run every 5 minutes during extended market hours (Mon-Fri)
+    # Pre-market 4 AM - After-hours 7 PM CST = 10:00 - 01:00 UTC
+    - cron: '*/5 10-23 * * 1-5'
+    - cron: '*/5 0 * * 2-6'
 
   workflow_dispatch:
     inputs:
