@@ -100,20 +100,20 @@ export default async function Dashboard() {
   )
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Header */}
-      <header className="border-b border-gray-800 bg-gray-900">
+      <header className="border-b border-slate-200 bg-white">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <Link href="/" className="hover:opacity-80 transition-opacity">
-              <h1 className="text-2xl font-bold text-white">StrategyForge</h1>
-              <p className="text-gray-400 text-sm">Autonomous Swing Trading Simulator</p>
+              <h1 className="text-2xl font-bold text-slate-900">StrategyForge</h1>
+              <p className="text-slate-600 text-sm">Autonomous Swing Trading Simulator</p>
             </Link>
             <div className="flex items-center gap-4">
               <RefreshButton />
               <Link
                 href="/analysis"
-                className="text-sm text-gray-400 hover:text-white transition-colors"
+                className="text-sm text-slate-600 hover:text-slate-900 transition-colors"
               >
                 Analysis
               </Link>
@@ -129,30 +129,30 @@ export default async function Dashboard() {
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Aggregate Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+          <div className="bg-white rounded-xl p-4 border border-slate-200">
+            <div className="flex items-center gap-2 text-slate-600 text-sm mb-1">
               <DollarSign className="w-4 h-4" />
               Portfolio Value
             </div>
             <div className="text-2xl font-bold">${totalPortfolioValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
           </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+          <div className="bg-white rounded-xl p-4 border border-slate-200">
+            <div className="flex items-center gap-2 text-slate-600 text-sm mb-1">
               <Wallet className="w-4 h-4" />
               Cash
             </div>
             <div className="text-2xl font-bold">${cashAvailable.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
           </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-purple-800/50">
+          <div className="bg-white rounded-xl p-4 border border-purple-800/50">
             <div className="flex items-center gap-2 text-purple-400 text-sm mb-1">
               <PiggyBank className="w-4 h-4" />
               Invested
             </div>
             <div className="text-2xl font-bold text-purple-400">${investedValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-            <div className="text-xs text-gray-500">{openPositions.length} positions</div>
+            <div className="text-xs text-slate-500">{openPositions.length} positions</div>
           </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+          <div className="bg-white rounded-xl p-4 border border-slate-200">
+            <div className="flex items-center gap-2 text-slate-600 text-sm mb-1">
               {unrealizedPL >= 0 ? <TrendingUp className="w-4 h-4 text-green-500" /> : <TrendingDown className="w-4 h-4 text-red-500" />}
               Unrealized P&L
             </div>
@@ -160,8 +160,8 @@ export default async function Dashboard() {
               {unrealizedPL >= 0 ? '+' : ''}${unrealizedPL.toFixed(0)}
             </div>
           </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+          <div className="bg-white rounded-xl p-4 border border-slate-200">
+            <div className="flex items-center gap-2 text-slate-600 text-sm mb-1">
               {totalPL >= 0 ? <TrendingUp className="w-4 h-4 text-green-500" /> : <TrendingDown className="w-4 h-4 text-red-500" />}
               Realized P&L
             </div>
@@ -169,47 +169,47 @@ export default async function Dashboard() {
               {totalPL >= 0 ? '+' : ''}${totalPL.toFixed(0)}
             </div>
           </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+          <div className="bg-white rounded-xl p-4 border border-slate-200">
+            <div className="flex items-center gap-2 text-slate-600 text-sm mb-1">
               <Activity className="w-4 h-4" />
               Total Trades
             </div>
             <div className="text-2xl font-bold">{totalTrades}</div>
           </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+          <div className="bg-white rounded-xl p-4 border border-slate-200">
+            <div className="flex items-center gap-2 text-slate-600 text-sm mb-1">
               <Target className="w-4 h-4" />
               Win Rate
             </div>
             <div className={`text-2xl font-bold ${actualWinRate >= 50 ? 'text-green-500' : actualWinRate >= 40 ? 'text-yellow-500' : 'text-red-500'}`}>
               {actualWinRate.toFixed(1)}%
             </div>
-            <div className="text-xs text-gray-500">{totalWins}W / {totalTrades - totalWins}L</div>
+            <div className="text-xs text-slate-500">{totalWins}W / {totalTrades - totalWins}L</div>
           </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-blue-800/50">
+          <div className="bg-white rounded-xl p-4 border border-blue-800/50">
             <div className="flex items-center gap-2 text-blue-400 text-sm mb-1">
               <Radio className="w-4 h-4" />
               Signals
             </div>
             <div className="text-2xl font-bold text-blue-400">{screenerStats.totalSignals}</div>
-            <div className="text-xs text-gray-500">{screenerStats.unprocessedSignals} pending</div>
+            <div className="text-xs text-slate-500">{screenerStats.unprocessedSignals} pending</div>
           </div>
         </div>
 
         {/* Strategy Leaderboard */}
-        <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-blue-500" />
               <h2 className="text-lg font-semibold">Strategy Leaderboard</h2>
             </div>
-            <span className="text-sm text-gray-400">{strategies.length} strategies</span>
+            <span className="text-sm text-slate-600">{strategies.length} strategies</span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="text-left text-sm text-gray-400 border-b border-gray-800">
+                <tr className="text-left text-sm text-slate-600 border-b border-slate-200">
                   <th className="px-6 py-3 font-medium">Rank</th>
                   <th className="px-6 py-3 font-medium">Strategy</th>
                   <th className="px-6 py-3 font-medium text-right">P&L</th>
@@ -233,13 +233,13 @@ export default async function Dashboard() {
                   const portfolioValue = cash + positionValue
 
                   return (
-                    <tr key={strategy.id} className="border-b border-gray-800/50 hover:bg-gray-800/50 transition-colors">
+                    <tr key={strategy.id} className="border-b border-slate-200/50 hover:bg-slate-100 transition-colors">
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${
                           index === 0 ? 'bg-yellow-500/20 text-yellow-500' :
-                          index === 1 ? 'bg-gray-400/20 text-gray-400' :
+                          index === 1 ? 'bg-gray-400/20 text-slate-600' :
                           index === 2 ? 'bg-amber-600/20 text-amber-600' :
-                          'bg-gray-700/50 text-gray-500'
+                          'bg-slate-200 text-slate-500'
                         }`}>
                           {index + 1}
                         </span>
@@ -247,7 +247,7 @@ export default async function Dashboard() {
                       <td className="px-6 py-4">
                         <Link href={`/strategy/${encodeURIComponent(strategy.id)}`} className="hover:text-blue-400 transition-colors">
                           <div className="font-medium">{strategy.name}</div>
-                          <div className="text-sm text-gray-500">{strategy.whitepaperAuthor}</div>
+                          <div className="text-sm text-slate-500">{strategy.whitepaperAuthor}</div>
                         </Link>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -259,13 +259,13 @@ export default async function Dashboard() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className={`font-medium ${winRate >= 50 ? 'text-green-500' : winRate > 0 ? 'text-yellow-500' : 'text-gray-500'}`}>
+                        <div className={`font-medium ${winRate >= 50 ? 'text-green-500' : winRate > 0 ? 'text-yellow-500' : 'text-slate-500'}`}>
                           {winRate.toFixed(1)}%
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="font-medium">{trades}</div>
-                        <div className="text-sm text-gray-500">/ {limit}</div>
+                        <div className="text-sm text-slate-500">/ {limit}</div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="font-medium">${cash.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
@@ -280,7 +280,7 @@ export default async function Dashboard() {
                             Running
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-gray-500/10 text-gray-400">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-gray-500/10 text-slate-600">
                             Idle
                           </span>
                         )}
@@ -296,19 +296,19 @@ export default async function Dashboard() {
         {/* Open Positions & Recent Trades */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
           {/* Open Positions */}
-          <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-800 flex items-center gap-2">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center gap-2">
               <Briefcase className="w-5 h-5 text-purple-500" />
               <h2 className="text-lg font-semibold">Open Positions</h2>
-              <span className="ml-auto text-sm text-gray-400">{openPositions.length} active</span>
+              <span className="ml-auto text-sm text-slate-600">{openPositions.length} active</span>
             </div>
             <div className="max-h-80 overflow-y-auto">
               {openPositions.length === 0 ? (
-                <div className="px-6 py-8 text-center text-gray-500">No open positions</div>
+                <div className="px-6 py-8 text-center text-slate-500">No open positions</div>
               ) : (
                 <table className="w-full">
-                  <thead className="sticky top-0 bg-gray-900">
-                    <tr className="text-left text-xs text-gray-400 border-b border-gray-800">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="text-left text-xs text-slate-600 border-b border-slate-200">
                       <th className="px-4 py-2">Symbol</th>
                       <th className="px-4 py-2">Strategy</th>
                       <th className="px-4 py-2 text-right">Entry</th>
@@ -320,10 +320,10 @@ export default async function Dashboard() {
                     {openPositions.map((pos) => {
                       const plPercent = ((pos.currentPrice - pos.entryPrice) / pos.entryPrice) * 100
                       return (
-                        <tr key={pos.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                        <tr key={pos.id} className="border-b border-slate-200/50 hover:bg-slate-50">
                           <td className="px-4 py-2 font-medium">{pos.symbol}</td>
-                          <td className="px-4 py-2 text-sm text-gray-400">{pos.simulation.strategy.name.slice(0, 15)}</td>
-                          <td className="px-4 py-2 text-right text-gray-400">${pos.entryPrice.toFixed(2)}</td>
+                          <td className="px-4 py-2 text-sm text-slate-600">{pos.simulation.strategy.name.slice(0, 15)}</td>
+                          <td className="px-4 py-2 text-right text-slate-600">${pos.entryPrice.toFixed(2)}</td>
                           <td className="px-4 py-2 text-right">${pos.currentPrice.toFixed(2)}</td>
                           <td className={`px-4 py-2 text-right ${plPercent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                             <div className="font-medium">{plPercent >= 0 ? '+' : ''}{plPercent.toFixed(2)}%</div>
@@ -339,18 +339,18 @@ export default async function Dashboard() {
           </div>
 
           {/* Recent Trades */}
-          <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-800 flex items-center gap-2">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center gap-2">
               <Clock className="w-5 h-5 text-green-500" />
               <h2 className="text-lg font-semibold">Recent Trades</h2>
             </div>
             <div className="max-h-80 overflow-y-auto">
               {recentTrades.length === 0 ? (
-                <div className="px-6 py-8 text-center text-gray-500">No trades yet</div>
+                <div className="px-6 py-8 text-center text-slate-500">No trades yet</div>
               ) : (
                 <table className="w-full">
-                  <thead className="sticky top-0 bg-gray-900">
-                    <tr className="text-left text-xs text-gray-400 border-b border-gray-800">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="text-left text-xs text-slate-600 border-b border-slate-200">
                       <th className="px-4 py-2">Symbol</th>
                       <th className="px-4 py-2">Strategy</th>
                       <th className="px-4 py-2 text-right">Shares</th>
@@ -360,9 +360,9 @@ export default async function Dashboard() {
                   </thead>
                   <tbody>
                     {recentTrades.map((trade) => (
-                      <tr key={trade.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                      <tr key={trade.id} className="border-b border-slate-200/50 hover:bg-slate-50">
                         <td className="px-4 py-2 font-medium">{trade.symbol}</td>
-                        <td className="px-4 py-2 text-sm text-gray-400">{trade.strategy.name.slice(0, 20)}</td>
+                        <td className="px-4 py-2 text-sm text-slate-600">{trade.strategy.name.slice(0, 20)}</td>
                         <td className="px-4 py-2 text-right">{trade.shares}</td>
                         <td className="px-4 py-2 text-right">${trade.totalCost.toFixed(2)}</td>
                         <td className="px-4 py-2 text-right">

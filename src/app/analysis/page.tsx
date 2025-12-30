@@ -155,16 +155,16 @@ export default function AnalysisPage() {
   }
 
   const Header = () => (
-    <header className="border-b border-gray-800 bg-gray-900">
+    <header className="border-b border-slate-200 bg-white">
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between">
           <Link href="/" className="hover:opacity-80 transition-opacity">
-            <span className="text-xl font-bold text-white">StrategyForge</span>
+            <span className="text-xl font-bold text-slate-900">StrategyForge</span>
           </Link>
           <div className="flex items-center gap-4">
             <Link
               href="/analysis"
-              className="text-sm text-white font-medium"
+              className="text-sm text-slate-900 font-medium"
             >
               Analysis
             </Link>
@@ -180,7 +180,7 @@ export default function AnalysisPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white">
+      <div className="min-h-screen bg-slate-50 text-slate-900">
         <Header />
         <div className="max-w-7xl mx-auto px-4 py-8">
           <h1 className="text-3xl font-bold mb-8">Strategy Analysis</h1>
@@ -192,7 +192,7 @@ export default function AnalysisPage() {
 
   if (!analysis) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white">
+      <div className="min-h-screen bg-slate-50 text-slate-900">
         <Header />
         <div className="max-w-7xl mx-auto px-4 py-8">
           <h1 className="text-3xl font-bold mb-8">Strategy Analysis</h1>
@@ -206,7 +206,7 @@ export default function AnalysisPage() {
   const formatPercent = (n: number) => n.toFixed(2) + '%'
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
       <Header />
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
@@ -215,12 +215,12 @@ export default function AnalysisPage() {
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-sm transition-colors"
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 disabled:opacity-50 rounded-lg text-sm text-slate-700 transition-colors"
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               {refreshing ? 'Refreshing...' : 'Refresh'}
             </button>
-            <div className="text-sm text-gray-400">
+            <div className="text-sm text-slate-600">
               Day {analysis.simulationDays} | Generated {new Date(analysis.generatedAt).toLocaleString()}
             </div>
           </div>
@@ -235,7 +235,7 @@ export default function AnalysisPage() {
               className={`px-4 py-2 rounded-lg capitalize ${
                 activeTab === tab
                   ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
               }`}
             >
               {tab}
@@ -248,32 +248,32 @@ export default function AnalysisPage() {
           <div className="space-y-6">
             {/* Portfolio Summary Cards (matches dashboard) */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="text-gray-400 text-sm">Portfolio Value</div>
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <div className="text-slate-600 text-sm">Portfolio Value</div>
                 <div className="text-xl font-bold">{formatCurrency(analysis.portfolioValue)}</div>
               </div>
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="text-gray-400 text-sm">Cash</div>
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <div className="text-slate-600 text-sm">Cash</div>
                 <div className="text-xl font-bold">{formatCurrency(analysis.cashAvailable)}</div>
               </div>
-              <div className="bg-gray-800 p-4 rounded-lg border border-purple-800/50">
+              <div className="bg-slate-100 p-4 rounded-lg border border-purple-800/50">
                 <div className="text-purple-400 text-sm">Invested</div>
                 <div className="text-xl font-bold text-purple-400">{formatCurrency(analysis.investedValue)}</div>
               </div>
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="text-gray-400 text-sm">Unrealized P&L</div>
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <div className="text-slate-600 text-sm">Unrealized P&L</div>
                 <div className={`text-xl font-bold ${analysis.unrealizedPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {analysis.unrealizedPL >= 0 ? '+' : ''}{formatCurrency(analysis.unrealizedPL)}
                 </div>
               </div>
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="text-gray-400 text-sm">Realized P&L</div>
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <div className="text-slate-600 text-sm">Realized P&L</div>
                 <div className={`text-xl font-bold ${analysis.realizedPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {analysis.realizedPL >= 0 ? '+' : ''}{formatCurrency(analysis.realizedPL)}
                 </div>
               </div>
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="text-gray-400 text-sm">Total Return</div>
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <div className="text-slate-600 text-sm">Total Return</div>
                 <div className={`text-xl font-bold ${analysis.overallReturnPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {formatPercent(analysis.overallReturnPercent)}
                 </div>
@@ -281,9 +281,9 @@ export default function AnalysisPage() {
             </div>
 
             {/* Session Breakdown */}
-            <div className="bg-gray-800 p-6 rounded-lg">
+            <div className="bg-slate-100 p-6 rounded-lg">
               <h2 className="text-xl font-bold mb-4">Exit Session Analysis</h2>
-              <p className="text-gray-400 text-sm mb-4">Performance breakdown by market session when trades were closed (times shown in CST)</p>
+              <p className="text-slate-600 text-sm mb-4">Performance breakdown by market session when trades were closed (times shown in CST)</p>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {(['PRE_MARKET', 'REGULAR', 'AFTER_HOURS', 'CLOSED'] as const).map(session => {
                   const data = analysis.sessionBreakdown[session]
@@ -293,19 +293,19 @@ export default function AnalysisPage() {
                     PRE_MARKET: { name: 'Pre-Market', time: '3:00-8:30 AM CST', color: 'text-orange-400' },
                     REGULAR: { name: 'Regular Hours', time: '8:30 AM-3:00 PM CST', color: 'text-green-400' },
                     AFTER_HOURS: { name: 'After-Hours', time: '3:00-7:00 PM CST', color: 'text-blue-400' },
-                    CLOSED: { name: 'Market Closed', time: 'Outside Hours', color: 'text-gray-400' },
+                    CLOSED: { name: 'Market Closed', time: 'Outside Hours', color: 'text-slate-600' },
                   }
                   const label = sessionLabels[session]
                   return (
-                    <div key={session} className="bg-gray-700 p-4 rounded-lg">
+                    <div key={session} className="bg-slate-200 p-4 rounded-lg">
                       <div className={`font-bold ${label.color}`}>{label.name}</div>
                       <div className="text-xs text-gray-500 mb-2">{label.time}</div>
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
-                          <span className="text-gray-400">Trades:</span> {total}
+                          <span className="text-slate-600">Trades:</span> {total}
                         </div>
                         <div>
-                          <span className="text-gray-400">Win Rate:</span>{' '}
+                          <span className="text-slate-600">Win Rate:</span>{' '}
                           <span className={winRate >= 50 ? 'text-green-400' : 'text-red-400'}>
                             {winRate.toFixed(0)}%
                           </span>
@@ -326,54 +326,54 @@ export default function AnalysisPage() {
             </div>
 
             {/* Recommendations */}
-            <div className="bg-gray-800 p-6 rounded-lg">
+            <div className="bg-slate-100 p-6 rounded-lg">
               <h2 className="text-xl font-bold mb-4">Recommendations</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <div className="text-gray-400 text-sm">Best Overall</div>
+                  <div className="text-slate-600 text-sm">Best Overall</div>
                   <div className="text-lg text-green-400">{analysis.recommendations.bestOverall}</div>
                 </div>
                 <div>
-                  <div className="text-gray-400 text-sm">Best Win Rate</div>
+                  <div className="text-slate-600 text-sm">Best Win Rate</div>
                   <div className="text-lg text-blue-400">{analysis.recommendations.bestWinRate}</div>
                 </div>
                 <div>
-                  <div className="text-gray-400 text-sm">Best Risk-Adjusted</div>
+                  <div className="text-slate-600 text-sm">Best Risk-Adjusted</div>
                   <div className="text-lg text-purple-400">{analysis.recommendations.bestRiskAdjusted}</div>
                 </div>
                 <div>
-                  <div className="text-gray-400 text-sm">Worst Performer</div>
+                  <div className="text-slate-600 text-sm">Worst Performer</div>
                   <div className="text-lg text-red-400">{analysis.recommendations.worstPerformer}</div>
                 </div>
               </div>
-              <div className="mt-4 p-4 bg-gray-700 rounded-lg">
-                <div className="text-gray-400 text-sm mb-1">Hybrid Suggestion</div>
+              <div className="mt-4 p-4 bg-slate-200 rounded-lg">
+                <div className="text-slate-600 text-sm mb-1">Hybrid Suggestion</div>
                 <div className="text-yellow-400">{analysis.recommendations.hybridSuggestion}</div>
               </div>
             </div>
 
             {/* Rankings */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-gray-800 p-6 rounded-lg">
+              <div className="bg-slate-100 p-6 rounded-lg">
                 <h3 className="font-bold mb-3">By Return</h3>
                 <ol className="space-y-1">
                   {analysis.rankings.byReturn.map((name, i) => (
                     <li key={name} className="flex items-center gap-2">
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                        i === 0 ? 'bg-yellow-500' : i === 1 ? 'bg-gray-400' : i === 2 ? 'bg-orange-600' : 'bg-gray-700'
+                        i === 0 ? 'bg-yellow-500' : i === 1 ? 'bg-gray-400' : i === 2 ? 'bg-orange-600' : 'bg-slate-200'
                       }`}>{i + 1}</span>
                       <span className="truncate">{name}</span>
                     </li>
                   ))}
                 </ol>
               </div>
-              <div className="bg-gray-800 p-6 rounded-lg">
+              <div className="bg-slate-100 p-6 rounded-lg">
                 <h3 className="font-bold mb-3">By Win Rate</h3>
                 <ol className="space-y-1">
                   {analysis.rankings.byWinRate.map((name, i) => (
                     <li key={name} className="flex items-center gap-2">
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                        i === 0 ? 'bg-yellow-500' : i === 1 ? 'bg-gray-400' : i === 2 ? 'bg-orange-600' : 'bg-gray-700'
+                        i === 0 ? 'bg-yellow-500' : i === 1 ? 'bg-gray-400' : i === 2 ? 'bg-orange-600' : 'bg-slate-200'
                       }`}>{i + 1}</span>
                       <span className="truncate">{name}</span>
                     </li>
@@ -388,7 +388,7 @@ export default function AnalysisPage() {
         {activeTab === 'strategies' && (
           <div className="space-y-4">
             {analysis.strategies.map(strategy => (
-              <div key={strategy.strategyId} className="bg-gray-800 p-6 rounded-lg">
+              <div key={strategy.strategyId} className="bg-slate-100 p-6 rounded-lg">
                 <div className="flex justify-between items-start mb-4">
                   <h3 className="text-xl font-bold">{strategy.strategyName}</h3>
                   <div className={`text-2xl font-bold ${strategy.totalReturnPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -398,57 +398,57 @@ export default function AnalysisPage() {
 
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
                   <div>
-                    <div className="text-gray-400">Portfolio</div>
+                    <div className="text-slate-600">Portfolio</div>
                     <div>{formatCurrency(strategy.portfolioValue)}</div>
                   </div>
                   <div>
-                    <div className="text-gray-400">Total Trades</div>
+                    <div className="text-slate-600">Total Trades</div>
                     <div>{strategy.totalTrades}</div>
                   </div>
                   <div>
-                    <div className="text-gray-400">Win Rate</div>
+                    <div className="text-slate-600">Win Rate</div>
                     <div className={strategy.winRate >= 50 ? 'text-green-400' : 'text-red-400'}>
                       {formatPercent(strategy.winRate)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-gray-400">Profit Factor</div>
+                    <div className="text-slate-600">Profit Factor</div>
                     <div className={strategy.profitFactor >= 1 ? 'text-green-400' : 'text-red-400'}>
                       {strategy.profitFactor === Infinity ? '∞' : strategy.profitFactor.toFixed(2)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-gray-400">Avg Win</div>
+                    <div className="text-slate-600">Avg Win</div>
                     <div className="text-green-400">{formatCurrency(strategy.averageWin)}</div>
                   </div>
                   <div>
-                    <div className="text-gray-400">Avg Loss</div>
+                    <div className="text-slate-600">Avg Loss</div>
                     <div className="text-red-400">{formatCurrency(strategy.averageLoss)}</div>
                   </div>
                   <div>
-                    <div className="text-gray-400">Largest Win</div>
+                    <div className="text-slate-600">Largest Win</div>
                     <div className="text-green-400">{formatCurrency(strategy.largestWin)}</div>
                   </div>
                   <div>
-                    <div className="text-gray-400">Largest Loss</div>
+                    <div className="text-slate-600">Largest Loss</div>
                     <div className="text-red-400">{formatCurrency(strategy.largestLoss)}</div>
                   </div>
                   <div>
-                    <div className="text-gray-400">Max Drawdown</div>
+                    <div className="text-slate-600">Max Drawdown</div>
                     <div className="text-red-400">{formatPercent(strategy.maxDrawdownPercent)}</div>
                   </div>
                   <div>
-                    <div className="text-gray-400">Expectancy</div>
+                    <div className="text-slate-600">Expectancy</div>
                     <div className={strategy.expectancy >= 0 ? 'text-green-400' : 'text-red-400'}>
                       {formatCurrency(strategy.expectancy)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-gray-400">Avg Hold Time</div>
+                    <div className="text-slate-600">Avg Hold Time</div>
                     <div>{strategy.avgHoldTimeHours.toFixed(1)}h</div>
                   </div>
                   <div>
-                    <div className="text-gray-400">Exit Ratio</div>
+                    <div className="text-slate-600">Exit Ratio</div>
                     <div className="text-xs">
                       <span className="text-green-400">{strategy.profitTargetExits} TP</span>
                       {' / '}
@@ -458,8 +458,8 @@ export default function AnalysisPage() {
                 </div>
 
                 {strategy.openTrades > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-700">
-                    <span className="text-gray-400 text-sm">
+                  <div className="mt-3 pt-3 border-t border-slate-300">
+                    <span className="text-slate-600 text-sm">
                       {strategy.openTrades} open positions | Unrealized P&L:{' '}
                       <span className={strategy.unrealizedPL >= 0 ? 'text-green-400' : 'text-red-400'}>
                         {formatCurrency(strategy.unrealizedPL)}
@@ -482,7 +482,7 @@ export default function AnalysisPage() {
                 <div className="text-lg text-yellow-400 mb-2">
                   {hybrid.bestCombination.entryStrategy} + {hybrid.bestCombination.exitStrategy}
                 </div>
-                <div className="text-gray-300">{hybrid.bestCombination.explanation}</div>
+                <div className="text-slate-700">{hybrid.bestCombination.explanation}</div>
                 <div className="mt-3 text-sm">
                   Expected Return: <span className="text-green-400">{hybrid.bestCombination.avgReturn.toFixed(2)}% per trade</span>
                 </div>
@@ -491,31 +491,31 @@ export default function AnalysisPage() {
 
             {/* Insights */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="text-gray-400 text-sm">Best Entry Signals</div>
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <div className="text-slate-600 text-sm">Best Entry Signals</div>
                 <div className="text-green-400">{hybrid.insights.bestEntryStrategy}</div>
               </div>
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="text-gray-400 text-sm">Best Exit Rules</div>
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <div className="text-slate-600 text-sm">Best Exit Rules</div>
                 <div className="text-blue-400">{hybrid.insights.bestExitStrategy}</div>
               </div>
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="text-gray-400 text-sm">Highest Win Rate</div>
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <div className="text-slate-600 text-sm">Highest Win Rate</div>
                 <div className="text-purple-400">{hybrid.insights.highestWinRate}</div>
               </div>
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="text-gray-400 text-sm">Best Risk/Reward</div>
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <div className="text-slate-600 text-sm">Best Risk/Reward</div>
                 <div className="text-yellow-400">{hybrid.insights.bestRiskReward}</div>
               </div>
             </div>
 
             {/* Top Hybrids */}
-            <div className="bg-gray-800 p-6 rounded-lg">
+            <div className="bg-slate-100 p-6 rounded-lg">
               <h3 className="font-bold mb-4">Top 10 Hybrid Combinations</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-gray-400 border-b border-gray-700">
+                    <tr className="text-slate-600 border-b border-slate-300">
                       <th className="text-left py-2">Entry Strategy</th>
                       <th className="text-left py-2">Exit Strategy</th>
                       <th className="text-right py-2">Win Rate</th>
@@ -526,7 +526,7 @@ export default function AnalysisPage() {
                   </thead>
                   <tbody>
                     {hybrid.topHybrids.map((h, i) => (
-                      <tr key={i} className="border-b border-gray-700">
+                      <tr key={i} className="border-b border-slate-300">
                         <td className="py-2">{h.entryStrategy}</td>
                         <td className="py-2">{h.exitStrategy}</td>
                         <td className="py-2 text-right">{h.simulatedWinRate.toFixed(1)}%</td>
@@ -543,11 +543,11 @@ export default function AnalysisPage() {
             </div>
 
             {/* Strategy Recommendations */}
-            <div className="bg-gray-800 p-6 rounded-lg">
+            <div className="bg-slate-100 p-6 rounded-lg">
               <h3 className="font-bold mb-4">Individual Strategy Analysis</h3>
               <div className="space-y-4">
                 {hybrid.strategyRecommendations.map(s => (
-                  <div key={s.strategy} className="p-4 bg-gray-700 rounded-lg">
+                  <div key={s.strategy} className="p-4 bg-slate-200 rounded-lg">
                     <div className="flex justify-between items-start mb-2">
                       <div className="font-bold">{s.strategy}</div>
                       <div className="text-sm">
@@ -579,15 +579,15 @@ export default function AnalysisPage() {
         {/* Correlations Tab */}
         {activeTab === 'correlations' && (
           <div className="space-y-6">
-            <div className="bg-gray-800 p-6 rounded-lg">
+            <div className="bg-slate-100 p-6 rounded-lg">
               <h2 className="text-xl font-bold mb-4">Strategy Correlations</h2>
-              <p className="text-gray-400 text-sm mb-4">
+              <p className="text-slate-600 text-sm mb-4">
                 Shows how often strategies trade the same symbols. High correlation = similar picks, low diversification.
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-gray-400 border-b border-gray-700">
+                    <tr className="text-slate-600 border-b border-slate-300">
                       <th className="text-left py-2">Strategy 1</th>
                       <th className="text-left py-2">Strategy 2</th>
                       <th className="text-right py-2">Correlation</th>
@@ -596,7 +596,7 @@ export default function AnalysisPage() {
                   </thead>
                   <tbody>
                     {analysis.correlations.map((c, i) => (
-                      <tr key={i} className="border-b border-gray-700">
+                      <tr key={i} className="border-b border-slate-300">
                         <td className="py-2">{c.strategy1}</td>
                         <td className="py-2">{c.strategy2}</td>
                         <td className="py-2 text-right">
@@ -608,7 +608,7 @@ export default function AnalysisPage() {
                             {(c.correlation * 100).toFixed(0)}%
                           </span>
                         </td>
-                        <td className="py-2 text-right text-gray-400">
+                        <td className="py-2 text-right text-slate-600">
                           {c.sharedSymbols.length > 0 ? c.sharedSymbols.slice(0, 5).join(', ') : 'None'}
                           {c.sharedSymbols.length > 5 && ` +${c.sharedSymbols.length - 5} more`}
                         </td>

@@ -18,7 +18,7 @@ export function RefreshButton() {
     <button
       onClick={handleRefresh}
       disabled={refreshing}
-      className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-sm transition-colors"
+      className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 disabled:opacity-50 rounded-lg text-sm text-slate-700 transition-colors"
     >
       <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
       {refreshing ? 'Refreshing...' : 'Refresh'}
