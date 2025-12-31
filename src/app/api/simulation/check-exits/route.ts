@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma'
 import { getQuote } from '@/lib/finnhub'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 30
+export const maxDuration = 60 // Increased to handle all ~250 positions
 
 // Determine market session based on current time (EST/EDT)
 function getMarketSession(): string {
@@ -47,6 +47,8 @@ export async function POST(request: Request) {
       positionsChecked: 0,
       positionsUpdated: 0,
       tradesClosed: 0,
+      uniqueSymbols: 0,
+      quotesFetched: 0,
       marketSession: getMarketSession(),
       exits: [] as Array<{ symbol: string; strategy: string; reason: string; pnl: number; session: string }>,
       errors: [] as string[],
@@ -65,11 +67,14 @@ export async function POST(request: Request) {
     // Get unique symbols to fetch quotes for
     const uniqueSymbols = [...new Set(positions.map(p => p.symbol))]
 
-    // Fetch quotes in parallel (batch of 5 at a time to avoid rate limits)
+    // Fetch quotes in parallel (batch of 10 at a time to speed up)
     const quoteCache = new Map<string, number>()
-    const BATCH_SIZE = 5
+    const BATCH_SIZE = 10
+    const QUOTE_TIME_LIMIT = 40000 // 40 seconds for quote fetching
 
-    for (let i = 0; i < uniqueSymbols.length && Date.now() - startTime < 15000; i += BATCH_SIZE) {
+    console.log(`Fetching quotes for ${uniqueSymbols.length} unique symbols...`)
+
+    for (let i = 0; i < uniqueSymbols.length && Date.now() - startTime < QUOTE_TIME_LIMIT; i += BATCH_SIZE) {
       const batch = uniqueSymbols.slice(i, i + BATCH_SIZE)
       const quotePromises = batch.map(async (symbol) => {
         try {
@@ -84,13 +89,19 @@ export async function POST(request: Request) {
       await Promise.all(quotePromises)
       // Small delay between batches to respect rate limits
       if (i + BATCH_SIZE < uniqueSymbols.length) {
-        await new Promise(r => setTimeout(r, 200))
+        await new Promise(r => setTimeout(r, 100))
       }
     }
 
+    results.uniqueSymbols = uniqueSymbols.length
+    results.quotesFetched = quoteCache.size
+    console.log(`Fetched ${quoteCache.size}/${uniqueSymbols.length} quotes in ${Date.now() - startTime}ms`)
+
+    const PROCESS_TIME_LIMIT = 55000 // 55 seconds total (leave 5s buffer)
+
     for (const position of positions) {
       // Time check
-      if (Date.now() - startTime > 25000) break
+      if (Date.now() - startTime > PROCESS_TIME_LIMIT) break
 
       try {
         // Use cached quote or fall back to position's stored price

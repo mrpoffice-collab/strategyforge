@@ -11,7 +11,7 @@ on:
 jobs:
   check-exits:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
     steps:
       - name: Check position exits
         run: |
@@ -22,7 +22,7 @@ jobs:
             "${{ secrets.APP_URL }}/api/simulation/check-exits" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            --max-time 30)
+            --max-time 90)
 
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | sed '$d')
