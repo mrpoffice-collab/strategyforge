@@ -46,9 +46,12 @@ export async function POST(request: Request) {
     const results = {
       positionsChecked: 0,
       positionsUpdated: 0,
+      positionsSkipped: 0, // Skipped due to failed quote
       tradesClosed: 0,
       uniqueSymbols: 0,
       quotesFetched: 0,
+      quotesFailed: 0,
+      failedSymbols: [] as string[],
       marketSession: getMarketSession(),
       exits: [] as Array<{ symbol: string; strategy: string; reason: string; pnl: number; session: string }>,
       errors: [] as string[],
@@ -69,6 +72,7 @@ export async function POST(request: Request) {
 
     // Fetch quotes in parallel (batch of 10 at a time to speed up)
     const quoteCache = new Map<string, number>()
+    const failedQuotes: string[] = []
     const BATCH_SIZE = 10
     const QUOTE_TIME_LIMIT = 40000 // 40 seconds for quote fetching
 
@@ -81,9 +85,11 @@ export async function POST(request: Request) {
           const quote = await getQuote(symbol)
           if (quote && quote.c > 0) {
             quoteCache.set(symbol, quote.c)
+          } else {
+            failedQuotes.push(`${symbol}:no_price`)
           }
-        } catch {
-          // Ignore errors, will use cached price
+        } catch (err) {
+          failedQuotes.push(`${symbol}:${err instanceof Error ? err.message : 'error'}`)
         }
       })
       await Promise.all(quotePromises)
@@ -95,6 +101,11 @@ export async function POST(request: Request) {
 
     results.uniqueSymbols = uniqueSymbols.length
     results.quotesFetched = quoteCache.size
+    results.quotesFailed = failedQuotes.length
+    results.failedSymbols = failedQuotes.slice(0, 20) // Show first 20 failures
+    if (failedQuotes.length > 0) {
+      console.log(`Failed to fetch ${failedQuotes.length} quotes: ${failedQuotes.slice(0, 10).join(', ')}`)
+    }
     console.log(`Fetched ${quoteCache.size}/${uniqueSymbols.length} quotes in ${Date.now() - startTime}ms`)
 
     const PROCESS_TIME_LIMIT = 55000 // 55 seconds total (leave 5s buffer)
@@ -104,8 +115,15 @@ export async function POST(request: Request) {
       if (Date.now() - startTime > PROCESS_TIME_LIMIT) break
 
       try {
-        // Use cached quote or fall back to position's stored price
-        const currentPrice = quoteCache.get(position.symbol) || position.currentPrice
+        // Only process if we have a fresh quote - skip positions where quote fetch failed
+        const freshPrice = quoteCache.get(position.symbol)
+        if (!freshPrice) {
+          // No fresh quote - skip this position entirely (don't update with stale data)
+          results.positionsSkipped++
+          continue
+        }
+
+        const currentPrice = freshPrice
 
         const exitConds = position.simulation.strategy.exitConditions as {
           profitTarget: number

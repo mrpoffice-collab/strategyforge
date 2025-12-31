@@ -1,12 +1,58 @@
 import { NextResponse } from 'next/server'
 import YahooFinance from 'yahoo-finance2'
 import { getQuote } from '@/lib/finnhub'
+import prisma from '@/lib/prisma'
 
 const yahooFinance = new YahooFinance()
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const mode = searchParams.get('mode')
+
+  // Price comparison mode - compare stored vs live prices
+  if (mode === 'compare') {
+    const positions = await prisma.position.findMany({
+      select: { symbol: true, currentPrice: true, updatedAt: true },
+      distinct: ['symbol'],
+      take: 50, // Check more symbols
+    })
+
+    const comparisons = []
+    for (const pos of positions) {
+      try {
+        const liveQuote = await getQuote(pos.symbol)
+        const livePrice = liveQuote?.c || 0
+        const diff = livePrice - pos.currentPrice
+        const diffPercent = pos.currentPrice > 0 ? (diff / pos.currentPrice) * 100 : 0
+
+        comparisons.push({
+          symbol: pos.symbol,
+          storedPrice: pos.currentPrice,
+          livePrice: livePrice,
+          diff: diff.toFixed(2),
+          diffPercent: diffPercent.toFixed(2) + '%',
+          lastUpdated: pos.updatedAt.toISOString(),
+        })
+      } catch (e) {
+        comparisons.push({
+          symbol: pos.symbol,
+          storedPrice: pos.currentPrice,
+          livePrice: 'error',
+          error: e instanceof Error ? e.message : 'Unknown',
+        })
+      }
+    }
+
+    return NextResponse.json({
+      mode: 'compare',
+      timestamp: new Date().toISOString(),
+      comparisons,
+    })
+  }
+
+  // Default mode - test AAPL
   const symbol = 'AAPL'
   const now = new Date()
   const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000)
