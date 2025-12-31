@@ -199,14 +199,23 @@ export async function POST(request: Request) {
   }
 }
 
-// GET - Quick status check
+// GET - Quick status check with update timestamps
 export async function GET() {
   const positions = await prisma.position.findMany({
     include: { simulation: { include: { strategy: { select: { name: true, exitConditions: true } } } } },
+    orderBy: { updatedAt: 'desc' },
   })
+
+  // Calculate aggregate stats
+  const totalCurrentValue = positions.reduce((sum, p) => sum + p.currentValue, 0)
+  const mostRecentUpdate = positions.length > 0 ? positions[0].updatedAt : null
+  const oldestUpdate = positions.length > 0 ? positions[positions.length - 1].updatedAt : null
 
   return NextResponse.json({
     totalPositions: positions.length,
+    totalCurrentValue: totalCurrentValue.toFixed(2),
+    mostRecentUpdate: mostRecentUpdate?.toISOString(),
+    oldestUpdate: oldestUpdate?.toISOString(),
     positions: positions.map(p => {
       const exitConds = p.simulation.strategy.exitConditions as { profitTarget: number; stopLoss: number }
       const pnlPercent = ((p.currentPrice - p.entryPrice) / p.entryPrice) * 100
@@ -215,11 +224,13 @@ export async function GET() {
         strategy: p.simulation.strategy.name,
         entryPrice: p.entryPrice,
         currentPrice: p.currentPrice,
+        currentValue: p.currentValue.toFixed(2),
         pnlPercent: pnlPercent.toFixed(2),
         target: exitConds.profitTarget,
         stopLoss: exitConds.stopLoss,
         distanceToTarget: (exitConds.profitTarget - pnlPercent).toFixed(2),
         distanceToStop: (pnlPercent + exitConds.stopLoss).toFixed(2),
+        updatedAt: p.updatedAt.toISOString(),
       }
     }),
   })
