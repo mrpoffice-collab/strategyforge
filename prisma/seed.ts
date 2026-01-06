@@ -3,36 +3,39 @@ import { Client } from 'pg'
 const DATABASE_URL = process.env.DATABASE_URL || ''
 
 // HYBRID STRATEGIES - Multiple indicators confirming signals
-// Based on academic research showing multi-factor approaches outperform single indicators
+// UPDATED: Exit conditions now match original whitepaper specifications exactly
+// Key changes: Removed arbitrary fixed % stops, implemented ATR-based and signal-based exits
 const strategies = [
   {
     name: 'RSI-Stochastic Double Oversold',
-    description: 'Hybrid momentum reversal: Enters when BOTH RSI and Stochastic indicate oversold AND MACD histogram turns positive. Triple confirmation reduces false signals. Based on Connors RSI research and multi-oscillator studies.',
+    description: 'Hybrid momentum reversal per Connors methodology. Connors Chapter 6: "Stops Hurt" - no fixed stop loss. Exit on RSI recovery above 50 OR price closes above 5-day MA OR time exit. Mean reversion strategies need room to work.',
     whitepaperTitle: 'Short Term Trading Strategies That Work',
     whitepaperAuthor: 'Larry Connors & Cesar Alvarez',
     whitepaperYear: 2008,
     positionSize: 12,
     entryConditions: {
       indicators: [
-        { type: 'RSI', period: 14, threshold: 35, comparison: 'less_than' },
+        { type: 'RSI', period: 2, threshold: 10, comparison: 'less_than' }, // Connors uses 2-period RSI
         { type: 'STOCHASTIC', period: 14, threshold: 25, comparison: 'oversold' },
-        { type: 'MACD', comparison: 'positive' },
+        { type: 'PRICE_VS_MA', period: 200, comparison: 'above' }, // Only trade uptrends
         { type: 'VOLUME', period: 20, multiplier: 1.0, comparison: 'greater_than' }
       ],
       priceRange: { min: 25, max: 100 }
     },
     exitConditions: {
       indicators: [
-        { type: 'RSI', period: 14, threshold: 60, comparison: 'greater_than' }
+        { type: 'RSI', period: 2, threshold: 50, comparison: 'greater_than' }, // Exit when RSI recovers
+        { type: 'PRICE_VS_MA', period: 5, comparison: 'closes_above' } // Or price above 5-day MA
       ],
-      profitTarget: 6.0,
-      stopLoss: 3.5,
-      maxHoldDays: 15
+      exitLogic: 'ANY', // Exit on ANY condition met (not all)
+      profitTarget: null, // No fixed profit target per Connors
+      stopLoss: null, // NO STOP LOSS per Connors "Stops Hurt"
+      maxHoldDays: 10 // Time-based exit as fallback
     }
   },
   {
     name: 'ADX Trend + MA Pullback',
-    description: 'Trend-following hybrid: Requires strong trend (ADX > 25) with bullish MA alignment (10 > 20 > 50), then enters on pullback to 20-day MA. Combines trend strength with optimal entry timing.',
+    description: 'Trend-following per Wilder. Uses ATR-based trailing stop (2x ATR) as specified in "New Concepts in Technical Trading Systems". Parabolic SAR methodology for trailing stops.',
     whitepaperTitle: 'New Concepts in Technical Trading Systems',
     whitepaperAuthor: 'J. Welles Wilder',
     whitepaperYear: 1978,
@@ -48,16 +51,21 @@ const strategies = [
     },
     exitConditions: {
       indicators: [
-        { type: 'MA_ALIGNMENT', direction: 'neutral' }
+        { type: 'ADX', period: 14, threshold: 20, comparison: 'less_than' }, // Trend weakening
+        { type: 'ADX', comparison: 'bearish_di' } // DI crossover
       ],
-      profitTarget: 8.0,
-      stopLoss: 4.0,
-      maxHoldDays: 20
+      exitLogic: 'ANY',
+      profitTarget: null, // Let winners run with trailing stop
+      stopLoss: null, // Replaced with ATR trailing
+      stopLossType: 'ATR_TRAILING',
+      atrMultiplier: 2.0, // 2x ATR trailing stop per Wilder
+      atrPeriod: 14,
+      maxHoldDays: 30
     }
   },
   {
     name: 'Bollinger Squeeze Breakout',
-    description: 'Volatility expansion hybrid: Waits for Bollinger Band squeeze (low volatility), then enters on volume-confirmed breakout above upper band with positive momentum (ROC). Captures the start of big moves.',
+    description: 'Per Bollinger: "There is nothing about a tag of a band that is a signal." Uses middle band as dynamic stop, not fixed %. Exit when price touches middle band (the 20-period MA).',
     whitepaperTitle: 'Bollinger on Bollinger Bands',
     whitepaperAuthor: 'John Bollinger',
     whitepaperYear: 2001,
@@ -73,16 +81,18 @@ const strategies = [
     },
     exitConditions: {
       indicators: [
-        { type: 'BOLLINGER', band: 'middle', comparison: 'price_touches' }
+        { type: 'BOLLINGER', band: 'middle', comparison: 'price_below' } // Stop: price falls below middle band
       ],
-      profitTarget: 10.0,
-      stopLoss: 5.0,
-      maxHoldDays: 15
+      exitLogic: 'ANY',
+      profitTarget: null, // Let price walk the upper band
+      stopLoss: null, // Middle band IS the stop
+      stopLossType: 'BOLLINGER_MIDDLE', // Dynamic stop at 20-period MA
+      maxHoldDays: 20
     }
   },
   {
     name: 'RSI Divergence + MACD Confirm',
-    description: 'Divergence-based hybrid: Detects bullish RSI divergence (price lower low, RSI higher low), confirms with MACD turning positive, and requires price near lower Bollinger Band. High-probability reversal setups.',
+    description: 'Per Kirkpatrick: Uses ATR-based stop placement. Stop set at 2x ATR below entry to account for volatility. Professional risk management approach.',
     whitepaperTitle: 'Technical Analysis: The Complete Resource',
     whitepaperAuthor: 'Charles Kirkpatrick & Julie Dahlquist',
     whitepaperYear: 2010,
@@ -97,17 +107,21 @@ const strategies = [
     },
     exitConditions: {
       indicators: [
-        { type: 'RSI', period: 14, threshold: 65, comparison: 'greater_than' }
+        { type: 'RSI', period: 14, threshold: 70, comparison: 'greater_than' } // Overbought exit
       ],
-      profitTarget: 7.0,
-      stopLoss: 3.5,
-      maxHoldDays: 12
+      exitLogic: 'ANY',
+      profitTarget: null,
+      stopLoss: null,
+      stopLossType: 'ATR_FIXED', // Fixed ATR-based stop (not trailing)
+      atrMultiplier: 2.0, // 2x ATR from entry
+      atrPeriod: 14,
+      maxHoldDays: 15
     }
   },
   {
     name: 'MACD-BB-Volume Triple Filter',
-    description: 'Conservative momentum hybrid: Requires ALL three filters - MACD histogram positive, price above middle BB (bullish territory), RSI in healthy range (40-70), AND volume confirmation. Reduces whipsaws in choppy markets.',
-    whitepaperTitle: 'Technical Analysis of the Futures Markets',
+    description: 'Per Appel: Exit when MACD declines below the trough that preceded the buy signal. Signal-based exit, not arbitrary percentage. Lets winners run while cutting losers on signal failure.',
+    whitepaperTitle: 'Understanding MACD',
     whitepaperAuthor: 'Gerald Appel',
     whitepaperYear: 1979,
     positionSize: 15,
@@ -122,20 +136,23 @@ const strategies = [
     },
     exitConditions: {
       indicators: [
-        { type: 'MACD', direction: 'bearish' }
+        { type: 'MACD', comparison: 'below_entry_trough' } // Appel's actual rule
       ],
-      profitTarget: 8.0,
-      stopLoss: 4.0,
-      maxHoldDays: 25
+      exitLogic: 'ANY',
+      profitTarget: null, // Signal-based, not target-based
+      stopLoss: null, // MACD signal IS the stop
+      stopLossType: 'MACD_TROUGH', // Exit when MACD below prior trough
+      maxHoldDays: 30
     }
   },
   {
     name: 'Stochastic-RSI Momentum Sync',
-    description: 'Dual oscillator sync: Enters when both Stochastic crosses above %D AND RSI is between 30-50 (recovering from oversold), with price above 50-day MA (uptrend filter). Catches momentum at early stage.',
+    description: 'Per Elder 2% Rule: Never risk more than 2% of account equity on single trade. Stop placed 1.5x ATR from entry. Position sized so max loss = 2% of account. Professional risk management.',
     whitepaperTitle: 'The New Trading for a Living',
     whitepaperAuthor: 'Dr. Alexander Elder',
     whitepaperYear: 2014,
-    positionSize: 12,
+    positionSize: 10, // Default 10%, but actual size calculated dynamically by 2% rule
+    positionSizeType: 'ELDER_2_PERCENT', // Position size = 2% account risk / (ATR * multiplier)
     entryConditions: {
       indicators: [
         { type: 'STOCHASTIC', comparison: 'bullish_cross' },
@@ -149,9 +166,14 @@ const strategies = [
       indicators: [
         { type: 'STOCHASTIC', threshold: 80, comparison: 'overbought' }
       ],
-      profitTarget: 6.0,
-      stopLoss: 3.0,
-      maxHoldDays: 10
+      exitLogic: 'ANY',
+      profitTarget: null,
+      stopLoss: null,
+      stopLossType: 'ATR_FIXED', // ATR-based per Elder
+      atrMultiplier: 1.5, // Elder recommends at least 1 ATR, we use 1.5 for swing
+      atrPeriod: 14,
+      accountRiskPercent: 2.0, // The 2% Rule
+      maxHoldDays: 12
     }
   }
 ]

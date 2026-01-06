@@ -117,6 +117,12 @@ export default async function Dashboard() {
               >
                 Analysis
               </Link>
+              <Link
+                href="/diary"
+                className="text-sm text-slate-600 hover:text-slate-900 transition-colors"
+              >
+                Diary
+              </Link>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
                 <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                 Live

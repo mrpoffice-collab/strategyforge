@@ -15,7 +15,9 @@
       "Bash(for id in strat_rsi_mean_reversion strat_macd_momentum_crossover strat_volume_breakout_scanner strat_rsi_stochastic_double_oversold \"strat_adx_trend_%2B_ma_pullback\" strat_bollinger_squeeze_breakout strat_macd_bb_volume_triple_filter strat_stochastic_rsi_momentum_sync cmjrkxxny00008sfmhyrvkbcs cmjrkxxtk00018sfm4vkptvmd cmjrkxxyc00028sfmj434l2m0 cmjrkxy3900038sfm5l2ldi05)",
       "Bash(do )",
       "Bash(done)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npm run dev:*)",
+      "Bash(powershell -Command \"Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force; Remove-Item -Force ''C:\\\\Users\\\\mrpof\\\\APPS Homemade\\\\strategyforge\\\\.next\\\\dev\\\\lock'' -ErrorAction SilentlyContinue\")"
     ]
   }
 }

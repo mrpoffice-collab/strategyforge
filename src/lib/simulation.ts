@@ -33,8 +33,14 @@ interface ExitConditions {
     type: string
     [key: string]: unknown
   }>
-  profitTarget: number
-  stopLoss: number
+  exitLogic?: 'ALL' | 'ANY'
+  profitTarget: number | null
+  stopLoss: number | null
+  stopLossType?: 'ATR_TRAILING' | 'ATR_FIXED' | 'BOLLINGER_MIDDLE' | 'MACD_TROUGH' | 'NONE'
+  atrMultiplier?: number
+  atrPeriod?: number
+  accountRiskPercent?: number
+  maxHoldDays?: number
 }
 
 interface TradeSignal {
@@ -640,7 +646,22 @@ export async function runSimulationTick(simulationId: string): Promise<{
 
           const totalCost = shares * signal.price
 
-          // Create position
+          // Extract whitepaper-aligned exit data from indicators
+          const entryATR = signal.indicators.atr as number | null
+          const entryMACDTrough = signal.indicators.macdHistogram as number | null
+          const entryBBMiddle = signal.indicators.bbMiddle as number | null
+
+          // Determine stop loss type from strategy
+          const stopLossType = exitConditions.stopLossType || 'NONE'
+          const atrMultiplier = exitConditions.atrMultiplier || 2.0
+
+          // Calculate ATR-based stop price if applicable
+          let atrStopPrice: number | null = null
+          if (entryATR && (stopLossType === 'ATR_TRAILING' || stopLossType === 'ATR_FIXED')) {
+            atrStopPrice = signal.price - (entryATR * atrMultiplier)
+          }
+
+          // Create position with whitepaper exit tracking
           await prisma.position.create({
             data: {
               simulationId,
@@ -652,6 +673,13 @@ export async function runSimulationTick(simulationId: string): Promise<{
               currentValue: totalCost,
               unrealizedPL: 0,
               unrealizedPLPercent: 0,
+              // Whitepaper-aligned exit tracking
+              entryATR,
+              entryMACDTrough,
+              entryBBMiddle,
+              stopLossType,
+              atrStopPrice,
+              trailingStopHigh: signal.price, // Initialize to entry price
             },
           })
 

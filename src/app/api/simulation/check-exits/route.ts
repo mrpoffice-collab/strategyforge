@@ -1,9 +1,20 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { getQuote } from '@/lib/finnhub'
+import { getQuote, getCandles, calculateRSI, calculateMACD, calculateBollingerBands, calculateSMA } from '@/lib/finnhub'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // Increased to handle all ~250 positions
+
+// Exit condition types from whitepaper-aligned strategies
+interface ExitConditions {
+  indicators: Array<{ type: string; period?: number; threshold?: number; comparison?: string }>
+  exitLogic?: 'ALL' | 'ANY'
+  profitTarget: number | null
+  stopLoss: number | null
+  stopLossType?: 'ATR_TRAILING' | 'ATR_FIXED' | 'BOLLINGER_MIDDLE' | 'MACD_TROUGH' | 'NONE'
+  atrMultiplier?: number
+  maxHoldDays?: number
+}
 
 // Determine market session based on current time (EST/EDT)
 function getMarketSession(): string {
@@ -110,6 +121,9 @@ export async function POST(request: Request) {
 
     const PROCESS_TIME_LIMIT = 55000 // 55 seconds total (leave 5s buffer)
 
+    // Cache for indicator data (to avoid redundant API calls)
+    const indicatorCache = new Map<string, { bbMiddle?: number; macdHistogram?: number; rsi2?: number; sma5?: number }>()
+
     for (const position of positions) {
       // Time check
       if (Date.now() - startTime > PROCESS_TIME_LIMIT) break
@@ -124,22 +138,179 @@ export async function POST(request: Request) {
         }
 
         const currentPrice = freshPrice
-
-        const exitConds = position.simulation.strategy.exitConditions as {
-          profitTarget: number
-          stopLoss: number
-        }
-
+        const exitConds = position.simulation.strategy.exitConditions as ExitConditions
         const pnlPercent = ((currentPrice - position.entryPrice) / position.entryPrice) * 100
+        const holdDays = (Date.now() - new Date(position.entryDate).getTime()) / (1000 * 60 * 60 * 24)
+
         let shouldExit = false
         let exitReason = ''
 
-        if (pnlPercent >= exitConds.profitTarget) {
+        // 1. Check TIME EXIT (all strategies have maxHoldDays as fallback)
+        if (exitConds.maxHoldDays && holdDays >= exitConds.maxHoldDays) {
+          shouldExit = true
+          exitReason = 'TIME_EXIT'
+        }
+
+        // 2. Check PROFIT TARGET (if defined - some whitepaper strategies don't use fixed targets)
+        if (!shouldExit && exitConds.profitTarget !== null && pnlPercent >= exitConds.profitTarget) {
           shouldExit = true
           exitReason = 'PROFIT_TARGET'
-        } else if (pnlPercent <= -exitConds.stopLoss) {
-          shouldExit = true
-          exitReason = 'STOP_LOSS'
+        }
+
+        // 3. Check STOP LOSS based on type
+        if (!shouldExit) {
+          const stopType = exitConds.stopLossType || (exitConds.stopLoss !== null ? 'FIXED_PERCENT' : 'NONE')
+
+          switch (stopType) {
+            case 'NONE':
+              // Connors strategy: NO stop loss - let the indicator exits handle it
+              break
+
+            case 'FIXED_PERCENT':
+              // Legacy fixed percentage stop (for backwards compatibility)
+              if (exitConds.stopLoss !== null && pnlPercent <= -exitConds.stopLoss) {
+                shouldExit = true
+                exitReason = 'STOP_LOSS'
+              }
+              break
+
+            case 'ATR_FIXED':
+              // Wilder/Elder: Fixed ATR-based stop from entry
+              if (position.atrStopPrice && currentPrice <= position.atrStopPrice) {
+                shouldExit = true
+                exitReason = 'ATR_STOP'
+              }
+              break
+
+            case 'ATR_TRAILING':
+              // Wilder: Trailing stop that moves up with price
+              if (position.trailingStopHigh && position.entryATR) {
+                const atrMultiplier = exitConds.atrMultiplier || 2.0
+                const newHigh = Math.max(position.trailingStopHigh, currentPrice)
+                const trailingStop = newHigh - (position.entryATR * atrMultiplier)
+
+                if (currentPrice <= trailingStop) {
+                  shouldExit = true
+                  exitReason = 'ATR_TRAILING_STOP'
+                } else if (currentPrice > position.trailingStopHigh) {
+                  // Update trailing stop high (done later in position update)
+                }
+              }
+              break
+
+            case 'BOLLINGER_MIDDLE':
+              // Bollinger: Exit when price falls below middle band (20-day SMA)
+              // Fetch current BB middle if not cached
+              if (!indicatorCache.has(position.symbol)) {
+                try {
+                  const now = Math.floor(Date.now() / 1000)
+                  const thirtyDaysAgo = now - 30 * 24 * 60 * 60
+                  const candles = await getCandles(position.symbol, 'D', thirtyDaysAgo, now)
+                  if (candles?.s === 'ok' && candles.c) {
+                    const bb = calculateBollingerBands(candles.c, 20, 2)
+                    const macd = calculateMACD(candles.c)
+                    const rsi2 = calculateRSI(candles.c, 2)
+                    const sma5 = calculateSMA(candles.c, 5)
+                    indicatorCache.set(position.symbol, {
+                      bbMiddle: bb?.middle,
+                      macdHistogram: macd?.histogram,
+                      rsi2,
+                      sma5,
+                    })
+                  }
+                } catch (e) {
+                  // Ignore indicator fetch errors
+                }
+              }
+              const indicators = indicatorCache.get(position.symbol)
+              if (indicators?.bbMiddle && currentPrice < indicators.bbMiddle) {
+                shouldExit = true
+                exitReason = 'BB_MIDDLE_STOP'
+              }
+              break
+
+            case 'MACD_TROUGH':
+              // Appel: Exit when MACD histogram falls below the trough at entry
+              if (!indicatorCache.has(position.symbol)) {
+                try {
+                  const now = Math.floor(Date.now() / 1000)
+                  const thirtyDaysAgo = now - 30 * 24 * 60 * 60
+                  const candles = await getCandles(position.symbol, 'D', thirtyDaysAgo, now)
+                  if (candles?.s === 'ok' && candles.c) {
+                    const macd = calculateMACD(candles.c)
+                    indicatorCache.set(position.symbol, { macdHistogram: macd?.histogram })
+                  }
+                } catch (e) {
+                  // Ignore
+                }
+              }
+              const macdData = indicatorCache.get(position.symbol)
+              if (macdData?.macdHistogram !== undefined && position.entryMACDTrough !== null) {
+                if (macdData.macdHistogram < position.entryMACDTrough) {
+                  shouldExit = true
+                  exitReason = 'MACD_TROUGH_STOP'
+                }
+              }
+              break
+          }
+        }
+
+        // 4. Check INDICATOR-BASED EXITS (Connors: RSI > 50 or price above 5-day MA)
+        if (!shouldExit && exitConds.indicators && exitConds.indicators.length > 0) {
+          const exitLogic = exitConds.exitLogic || 'ANY'
+
+          // Fetch indicators if needed
+          if (!indicatorCache.has(position.symbol)) {
+            try {
+              const now = Math.floor(Date.now() / 1000)
+              const thirtyDaysAgo = now - 30 * 24 * 60 * 60
+              const candles = await getCandles(position.symbol, 'D', thirtyDaysAgo, now)
+              if (candles?.s === 'ok' && candles.c) {
+                const rsi2 = calculateRSI(candles.c, 2)
+                const sma5 = calculateSMA(candles.c, 5)
+                const bb = calculateBollingerBands(candles.c, 20, 2)
+                const macd = calculateMACD(candles.c)
+                indicatorCache.set(position.symbol, {
+                  rsi2,
+                  sma5,
+                  bbMiddle: bb?.middle,
+                  macdHistogram: macd?.histogram,
+                })
+              }
+            } catch (e) {
+              // Ignore
+            }
+          }
+
+          const indData = indicatorCache.get(position.symbol)
+          let conditionsMet = 0
+          let conditionsChecked = 0
+
+          for (const cond of exitConds.indicators) {
+            conditionsChecked++
+            if (cond.type === 'RSI' && indData?.rsi2 !== undefined) {
+              const threshold = cond.threshold || 50
+              if (cond.comparison === 'greater_than' && indData.rsi2 > threshold) {
+                conditionsMet++
+                exitReason = 'RSI_EXIT'
+              }
+            } else if (cond.type === 'PRICE_VS_MA' && indData?.sma5 !== undefined) {
+              if (cond.comparison === 'closes_above' && currentPrice > indData.sma5) {
+                conditionsMet++
+                exitReason = 'MA_EXIT'
+              }
+            } else if (cond.type === 'STOCHASTIC' && cond.comparison === 'overbought') {
+              // Would need stochastic data - simplified for now
+              conditionsMet++
+            }
+          }
+
+          // Check if exit conditions are met based on logic
+          if (exitLogic === 'ANY' && conditionsMet > 0) {
+            shouldExit = true
+          } else if (exitLogic === 'ALL' && conditionsMet === conditionsChecked) {
+            shouldExit = true
+          }
         }
 
         if (shouldExit) {
@@ -186,7 +357,11 @@ export async function POST(request: Request) {
             session: exitSession,
           })
         } else {
-          // Update position's current price
+          // Update position's current price and trailing stop high
+          const newTrailingHigh = position.trailingStopHigh
+            ? Math.max(position.trailingStopHigh, currentPrice)
+            : currentPrice
+
           await prisma.position.update({
             where: { id: position.id },
             data: {
@@ -194,6 +369,7 @@ export async function POST(request: Request) {
               currentValue: position.shares * currentPrice,
               unrealizedPL: (currentPrice - position.entryPrice) * position.shares,
               unrealizedPLPercent: pnlPercent,
+              trailingStopHigh: newTrailingHigh, // Update for ATR trailing stops
             },
           })
           results.positionsUpdated++

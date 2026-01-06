@@ -52,6 +52,25 @@ export async function GET(request: Request) {
     })
   }
 
+  // Test specific symbol mode
+  const testSymbol = searchParams.get('symbol')
+  if (testSymbol) {
+    try {
+      const quote = await getQuote(testSymbol)
+      return NextResponse.json({
+        symbol: testSymbol,
+        timestamp: new Date().toISOString(),
+        quote,
+        price: quote?.c || null,
+      })
+    } catch (e) {
+      return NextResponse.json({
+        symbol: testSymbol,
+        error: e instanceof Error ? e.message : 'Unknown',
+      })
+    }
+  }
+
   // Default mode - test AAPL
   const symbol = 'AAPL'
   const now = new Date()

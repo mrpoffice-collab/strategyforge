@@ -122,6 +122,14 @@ model Position {
   unrealizedPL   Float
   unrealizedPLPercent Float
 
+  // Whitepaper-aligned exit tracking
+  entryATR           Float?    // ATR at entry for ATR-based stops
+  entryMACDTrough    Float?    // MACD histogram low before entry (for Appel exit)
+  entryBBMiddle      Float?    // Bollinger middle band at entry
+  stopLossType       String?   // ATR_TRAILING, ATR_FIXED, BOLLINGER_MIDDLE, MACD_TROUGH, NONE
+  atrStopPrice       Float?    // Calculated stop price for ATR-based stops
+  trailingStopHigh   Float?    // Highest price since entry (for trailing stops)
+
   updatedAt      DateTime   @updatedAt
 
   @@unique([simulationId, symbol])
@@ -166,17 +174,26 @@ model MarketData {
 
   // Pre-calculated indicators (cached)
   rsi14          Float?
+  rsi2           Float?     // 2-period RSI for Connors strategy
   macd           Float?
   macdSignal     Float?
   macdHistogram  Float?
   bbUpper        Float?
   bbMiddle       Float?
   bbLower        Float?
+  bbWidth        Float?     // Bollinger Band width for squeeze detection
   sma20          Float?
   sma50          Float?
   sma200         Float?
+  sma5           Float?     // 5-day MA for Connors exit
   ema12          Float?
   ema26          Float?
+  atr14          Float?     // Average True Range for Wilder/Elder stops
+  stochK         Float?     // Stochastic %K
+  stochD         Float?     // Stochastic %D
+  adx            Float?     // ADX for trend strength
+  plusDI         Float?     // +DI for ADX
+  minusDI        Float?     // -DI for ADX
 
   createdAt      DateTime   @default(now())
 
@@ -230,6 +247,37 @@ model ScreenerSignal {
   @@index([strategyKey])
   @@index([processed])
   @@map("ScreenerSignal")
+}
+
+// Weekly diary entries with AI-generated summaries
+model DiaryEntry {
+  id             String     @id @default(cuid())
+  weekNumber     Int        // Week of the year (1-52)
+  year           Int
+  weekStart      DateTime   // Monday of the week
+  weekEnd        DateTime   // Friday of the week
+
+  // Summary content (AI-generated)
+  title          String     // e.g., "Week 2: Finding Our Footing"
+  summary        String     @db.Text  // The main diary content
+
+  // Key metrics for the week
+  tradesOpened   Int        @default(0)
+  tradesClosed   Int        @default(0)
+  winCount       Int        @default(0)
+  lossCount      Int        @default(0)
+  weeklyPL       Float      @default(0)
+
+  // What worked / What didn't (AI-extracted)
+  whatWorked     String[]   // Array of bullet points
+  whatDidnt      String[]   // Array of bullet points
+  keyTakeaways   String[]   // Array of key learnings
+
+  generatedAt    DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([weekNumber, year])
+  @@index([year, weekNumber])
 }
 
 // Cron execution log for debugging

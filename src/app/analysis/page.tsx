@@ -168,7 +168,7 @@ export default function AnalysisPage() {
             >
               Analysis
             </Link>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-emerald-800 border border-green-500/20">
               <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
               Live
             </span>
@@ -196,7 +196,7 @@ export default function AnalysisPage() {
         <Header />
         <div className="max-w-7xl mx-auto px-4 py-8">
           <h1 className="text-3xl font-bold mb-8">Strategy Analysis</h1>
-          <div className="text-red-400">Failed to load analysis data</div>
+          <div className="text-red-700">Failed to load analysis data</div>
         </div>
       </div>
     )
@@ -257,24 +257,24 @@ export default function AnalysisPage() {
                 <div className="text-xl font-bold">{formatCurrency(analysis.cashAvailable)}</div>
               </div>
               <div className="bg-slate-100 p-4 rounded-lg border border-purple-800/50">
-                <div className="text-purple-400 text-sm">Invested</div>
-                <div className="text-xl font-bold text-purple-400">{formatCurrency(analysis.investedValue)}</div>
+                <div className="text-purple-700 text-sm">Invested</div>
+                <div className="text-xl font-bold text-purple-700">{formatCurrency(analysis.investedValue)}</div>
               </div>
               <div className="bg-slate-100 p-4 rounded-lg">
                 <div className="text-slate-600 text-sm">Unrealized P&L</div>
-                <div className={`text-xl font-bold ${analysis.unrealizedPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <div className={`text-xl font-bold ${analysis.unrealizedPL >= 0 ? 'text-emerald-800' : 'text-red-700'}`}>
                   {analysis.unrealizedPL >= 0 ? '+' : ''}{formatCurrency(analysis.unrealizedPL)}
                 </div>
               </div>
               <div className="bg-slate-100 p-4 rounded-lg">
                 <div className="text-slate-600 text-sm">Realized P&L</div>
-                <div className={`text-xl font-bold ${analysis.realizedPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <div className={`text-xl font-bold ${analysis.realizedPL >= 0 ? 'text-emerald-800' : 'text-red-700'}`}>
                   {analysis.realizedPL >= 0 ? '+' : ''}{formatCurrency(analysis.realizedPL)}
                 </div>
               </div>
               <div className="bg-slate-100 p-4 rounded-lg">
                 <div className="text-slate-600 text-sm">Total Return</div>
-                <div className={`text-xl font-bold ${analysis.overallReturnPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <div className={`text-xl font-bold ${analysis.overallReturnPercent >= 0 ? 'text-emerald-800' : 'text-red-700'}`}>
                   {formatPercent(analysis.overallReturnPercent)}
                 </div>
               </div>
@@ -290,32 +290,32 @@ export default function AnalysisPage() {
                   const total = data.wins + data.losses
                   const winRate = total > 0 ? (data.wins / total) * 100 : 0
                   const sessionLabels = {
-                    PRE_MARKET: { name: 'Pre-Market', time: '3:00-8:30 AM CST', color: 'text-orange-400' },
-                    REGULAR: { name: 'Regular Hours', time: '8:30 AM-3:00 PM CST', color: 'text-green-400' },
-                    AFTER_HOURS: { name: 'After-Hours', time: '3:00-7:00 PM CST', color: 'text-blue-400' },
+                    PRE_MARKET: { name: 'Pre-Market', time: '3:00-8:30 AM CST', color: 'text-amber-900' },
+                    REGULAR: { name: 'Regular Hours', time: '8:30 AM-3:00 PM CST', color: 'text-emerald-800' },
+                    AFTER_HOURS: { name: 'After-Hours', time: '3:00-7:00 PM CST', color: 'text-blue-700' },
                     CLOSED: { name: 'Market Closed', time: 'Outside Hours', color: 'text-slate-600' },
                   }
                   const label = sessionLabels[session]
                   return (
                     <div key={session} className="bg-slate-200 p-4 rounded-lg">
                       <div className={`font-bold ${label.color}`}>{label.name}</div>
-                      <div className="text-xs text-gray-500 mb-2">{label.time}</div>
+                      <div className="text-xs text-gray-700 mb-2">{label.time}</div>
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
                           <span className="text-slate-600">Trades:</span> {total}
                         </div>
                         <div>
                           <span className="text-slate-600">Win Rate:</span>{' '}
-                          <span className={winRate >= 50 ? 'text-green-400' : 'text-red-400'}>
+                          <span className={winRate >= 50 ? 'text-emerald-800' : 'text-red-700'}>
                             {winRate.toFixed(0)}%
                           </span>
                         </div>
                         <div>
-                          <span className="text-green-400">{data.wins}W</span>
+                          <span className="text-emerald-800">{data.wins}W</span>
                           {' / '}
-                          <span className="text-red-400">{data.losses}L</span>
+                          <span className="text-red-700">{data.losses}L</span>
                         </div>
-                        <div className={data.totalPL >= 0 ? 'text-green-400' : 'text-red-400'}>
+                        <div className={data.totalPL >= 0 ? 'text-emerald-800' : 'text-red-700'}>
                           {data.totalPL >= 0 ? '+' : ''}{formatCurrency(data.totalPL)}
                         </div>
                       </div>
@@ -331,24 +331,24 @@ export default function AnalysisPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <div className="text-slate-600 text-sm">Best Overall</div>
-                  <div className="text-lg text-green-400">{analysis.recommendations.bestOverall}</div>
+                  <div className="text-lg text-emerald-800">{analysis.recommendations.bestOverall}</div>
                 </div>
                 <div>
                   <div className="text-slate-600 text-sm">Best Win Rate</div>
-                  <div className="text-lg text-blue-400">{analysis.recommendations.bestWinRate}</div>
+                  <div className="text-lg text-blue-700">{analysis.recommendations.bestWinRate}</div>
                 </div>
                 <div>
                   <div className="text-slate-600 text-sm">Best Risk-Adjusted</div>
-                  <div className="text-lg text-purple-400">{analysis.recommendations.bestRiskAdjusted}</div>
+                  <div className="text-lg text-purple-700">{analysis.recommendations.bestRiskAdjusted}</div>
                 </div>
                 <div>
                   <div className="text-slate-600 text-sm">Worst Performer</div>
-                  <div className="text-lg text-red-400">{analysis.recommendations.worstPerformer}</div>
+                  <div className="text-lg text-red-700">{analysis.recommendations.worstPerformer}</div>
                 </div>
               </div>
               <div className="mt-4 p-4 bg-slate-200 rounded-lg">
                 <div className="text-slate-600 text-sm mb-1">Hybrid Suggestion</div>
-                <div className="text-yellow-400">{analysis.recommendations.hybridSuggestion}</div>
+                <div className="text-amber-900 font-medium">{analysis.recommendations.hybridSuggestion}</div>
               </div>
             </div>
 
@@ -391,7 +391,7 @@ export default function AnalysisPage() {
               <div key={strategy.strategyId} className="bg-slate-100 p-6 rounded-lg">
                 <div className="flex justify-between items-start mb-4">
                   <h3 className="text-xl font-bold">{strategy.strategyName}</h3>
-                  <div className={`text-2xl font-bold ${strategy.totalReturnPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  <div className={`text-2xl font-bold ${strategy.totalReturnPercent >= 0 ? 'text-emerald-800' : 'text-red-700'}`}>
                     {formatPercent(strategy.totalReturnPercent)}
                   </div>
                 </div>
@@ -407,39 +407,39 @@ export default function AnalysisPage() {
                   </div>
                   <div>
                     <div className="text-slate-600">Win Rate</div>
-                    <div className={strategy.winRate >= 50 ? 'text-green-400' : 'text-red-400'}>
+                    <div className={strategy.winRate >= 50 ? 'text-emerald-800' : 'text-red-700'}>
                       {formatPercent(strategy.winRate)}
                     </div>
                   </div>
                   <div>
                     <div className="text-slate-600">Profit Factor</div>
-                    <div className={strategy.profitFactor >= 1 ? 'text-green-400' : 'text-red-400'}>
-                      {strategy.profitFactor === Infinity ? '∞' : strategy.profitFactor.toFixed(2)}
+                    <div className={(strategy.profitFactor ?? 0) >= 1 ? 'text-emerald-800' : 'text-red-700'}>
+                      {strategy.profitFactor == null ? 'N/A' : strategy.profitFactor === Infinity ? '∞' : strategy.profitFactor.toFixed(2)}
                     </div>
                   </div>
                   <div>
                     <div className="text-slate-600">Avg Win</div>
-                    <div className="text-green-400">{formatCurrency(strategy.averageWin)}</div>
+                    <div className="text-emerald-800">{formatCurrency(strategy.averageWin)}</div>
                   </div>
                   <div>
                     <div className="text-slate-600">Avg Loss</div>
-                    <div className="text-red-400">{formatCurrency(strategy.averageLoss)}</div>
+                    <div className="text-red-700">{formatCurrency(strategy.averageLoss)}</div>
                   </div>
                   <div>
                     <div className="text-slate-600">Largest Win</div>
-                    <div className="text-green-400">{formatCurrency(strategy.largestWin)}</div>
+                    <div className="text-emerald-800">{formatCurrency(strategy.largestWin)}</div>
                   </div>
                   <div>
                     <div className="text-slate-600">Largest Loss</div>
-                    <div className="text-red-400">{formatCurrency(strategy.largestLoss)}</div>
+                    <div className="text-red-700">{formatCurrency(strategy.largestLoss)}</div>
                   </div>
                   <div>
                     <div className="text-slate-600">Max Drawdown</div>
-                    <div className="text-red-400">{formatPercent(strategy.maxDrawdownPercent)}</div>
+                    <div className="text-red-700">{formatPercent(strategy.maxDrawdownPercent)}</div>
                   </div>
                   <div>
                     <div className="text-slate-600">Expectancy</div>
-                    <div className={strategy.expectancy >= 0 ? 'text-green-400' : 'text-red-400'}>
+                    <div className={strategy.expectancy >= 0 ? 'text-emerald-800' : 'text-red-700'}>
                       {formatCurrency(strategy.expectancy)}
                     </div>
                   </div>
@@ -450,9 +450,9 @@ export default function AnalysisPage() {
                   <div>
                     <div className="text-slate-600">Exit Ratio</div>
                     <div className="text-xs">
-                      <span className="text-green-400">{strategy.profitTargetExits} TP</span>
+                      <span className="text-emerald-800">{strategy.profitTargetExits} TP</span>
                       {' / '}
-                      <span className="text-red-400">{strategy.stopLossExits} SL</span>
+                      <span className="text-red-700">{strategy.stopLossExits} SL</span>
                     </div>
                   </div>
                 </div>
@@ -461,7 +461,7 @@ export default function AnalysisPage() {
                   <div className="mt-3 pt-3 border-t border-slate-300">
                     <span className="text-slate-600 text-sm">
                       {strategy.openTrades} open positions | Unrealized P&L:{' '}
-                      <span className={strategy.unrealizedPL >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      <span className={strategy.unrealizedPL >= 0 ? 'text-emerald-800' : 'text-red-700'}>
                         {formatCurrency(strategy.unrealizedPL)}
                       </span>
                     </span>
@@ -478,13 +478,13 @@ export default function AnalysisPage() {
             {/* Best Combination */}
             {hybrid.bestCombination && (
               <div className="bg-gradient-to-r from-purple-900 to-blue-900 p-6 rounded-lg">
-                <h2 className="text-xl font-bold mb-2">Recommended Hybrid Strategy</h2>
-                <div className="text-lg text-yellow-400 mb-2">
+                <h2 className="text-xl font-bold text-white mb-2">Recommended Hybrid Strategy</h2>
+                <div className="text-lg text-yellow-300 mb-2">
                   {hybrid.bestCombination.entryStrategy} + {hybrid.bestCombination.exitStrategy}
                 </div>
-                <div className="text-slate-700">{hybrid.bestCombination.explanation}</div>
-                <div className="mt-3 text-sm">
-                  Expected Return: <span className="text-green-400">{hybrid.bestCombination.avgReturn.toFixed(2)}% per trade</span>
+                <div className="text-slate-200">{hybrid.bestCombination.explanation}</div>
+                <div className="mt-3 text-sm text-slate-200">
+                  Expected Return: <span className="text-green-300 font-medium">{hybrid.bestCombination.avgReturn.toFixed(2)}% per trade</span>
                 </div>
               </div>
             )}
@@ -493,19 +493,19 @@ export default function AnalysisPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-slate-100 p-4 rounded-lg">
                 <div className="text-slate-600 text-sm">Best Entry Signals</div>
-                <div className="text-green-400">{hybrid.insights.bestEntryStrategy}</div>
+                <div className="text-emerald-800">{hybrid.insights.bestEntryStrategy}</div>
               </div>
               <div className="bg-slate-100 p-4 rounded-lg">
                 <div className="text-slate-600 text-sm">Best Exit Rules</div>
-                <div className="text-blue-400">{hybrid.insights.bestExitStrategy}</div>
+                <div className="text-blue-700">{hybrid.insights.bestExitStrategy}</div>
               </div>
               <div className="bg-slate-100 p-4 rounded-lg">
                 <div className="text-slate-600 text-sm">Highest Win Rate</div>
-                <div className="text-purple-400">{hybrid.insights.highestWinRate}</div>
+                <div className="text-purple-700">{hybrid.insights.highestWinRate}</div>
               </div>
               <div className="bg-slate-100 p-4 rounded-lg">
                 <div className="text-slate-600 text-sm">Best Risk/Reward</div>
-                <div className="text-yellow-400">{hybrid.insights.bestRiskReward}</div>
+                <div className="text-amber-900 font-medium">{hybrid.insights.bestRiskReward}</div>
               </div>
             </div>
 
@@ -529,10 +529,10 @@ export default function AnalysisPage() {
                       <tr key={i} className="border-b border-slate-300">
                         <td className="py-2">{h.entryStrategy}</td>
                         <td className="py-2">{h.exitStrategy}</td>
-                        <td className="py-2 text-right">{h.simulatedWinRate.toFixed(1)}%</td>
-                        <td className="py-2 text-right">{h.simulatedProfitFactor.toFixed(2)}</td>
-                        <td className={`py-2 text-right ${h.avgReturn >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {h.avgReturn.toFixed(2)}%
+                        <td className="py-2 text-right">{h.simulatedWinRate?.toFixed(1) ?? 'N/A'}%</td>
+                        <td className="py-2 text-right">{h.simulatedProfitFactor?.toFixed(2) ?? 'N/A'}</td>
+                        <td className={`py-2 text-right ${(h.avgReturn ?? 0) >= 0 ? 'text-emerald-800' : 'text-red-700'}`}>
+                          {h.avgReturn?.toFixed(2) ?? 'N/A'}%
                         </td>
                         <td className="py-2 text-xs">{h.recommendation}</td>
                       </tr>
@@ -551,7 +551,7 @@ export default function AnalysisPage() {
                     <div className="flex justify-between items-start mb-2">
                       <div className="font-bold">{s.strategy}</div>
                       <div className="text-sm">
-                        Score: <span className="text-yellow-400">{(s.overallScore * 100).toFixed(0)}</span>
+                        Score: <span className="text-amber-900 font-bold">{(s.overallScore * 100).toFixed(0)}</span>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-4 text-sm mb-2">
@@ -560,12 +560,12 @@ export default function AnalysisPage() {
                       <div>Stop: {s.stopLoss}%</div>
                     </div>
                     {s.strengths.length > 0 && (
-                      <div className="text-sm text-green-400">
+                      <div className="text-sm text-emerald-800">
                         + {s.strengths.join(' | ')}
                       </div>
                     )}
                     {s.issues.length > 0 && (
-                      <div className="text-sm text-red-400">
+                      <div className="text-sm text-red-700">
                         - {s.issues.join(' | ')}
                       </div>
                     )}
@@ -600,10 +600,10 @@ export default function AnalysisPage() {
                         <td className="py-2">{c.strategy1}</td>
                         <td className="py-2">{c.strategy2}</td>
                         <td className="py-2 text-right">
-                          <span className={`${
-                            c.correlation > 0.5 ? 'text-red-400' :
-                            c.correlation > 0.25 ? 'text-yellow-400' :
-                            'text-green-400'
+                          <span className={`font-medium ${
+                            c.correlation > 0.5 ? 'text-red-700' :
+                            c.correlation > 0.25 ? 'text-amber-900' :
+                            'text-emerald-800'
                           }`}>
                             {(c.correlation * 100).toFixed(0)}%
                           </span>
