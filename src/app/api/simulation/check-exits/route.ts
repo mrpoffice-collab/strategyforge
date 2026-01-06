@@ -138,7 +138,7 @@ export async function POST(request: Request) {
         }
 
         const currentPrice = freshPrice
-        const exitConds = position.simulation.strategy.exitConditions as ExitConditions
+        const exitConds = position.simulation.strategy.exitConditions as unknown as ExitConditions
         const pnlPercent = ((currentPrice - position.entryPrice) / position.entryPrice) * 100
         const holdDays = (Date.now() - new Date(position.entryDate).getTime()) / (1000 * 60 * 60 * 24)
 
@@ -214,8 +214,8 @@ export async function POST(request: Request) {
                     indicatorCache.set(position.symbol, {
                       bbMiddle: bb?.middle,
                       macdHistogram: macd?.histogram,
-                      rsi2,
-                      sma5,
+                      rsi2: rsi2 ?? undefined,
+                      sma5: sma5 ?? undefined,
                     })
                   }
                 } catch (e) {
@@ -271,8 +271,8 @@ export async function POST(request: Request) {
                 const bb = calculateBollingerBands(candles.c, 20, 2)
                 const macd = calculateMACD(candles.c)
                 indicatorCache.set(position.symbol, {
-                  rsi2,
-                  sma5,
+                  rsi2: rsi2 ?? undefined,
+                  sma5: sma5 ?? undefined,
                   bbMiddle: bb?.middle,
                   macdHistogram: macd?.histogram,
                 })

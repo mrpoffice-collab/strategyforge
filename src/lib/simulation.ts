@@ -469,7 +469,7 @@ async function checkExitConditions(
   const pnlPercent = ((price - position.entryPrice) / position.entryPrice) * 100
 
   // Check profit target
-  if (pnlPercent >= conditions.profitTarget) {
+  if (conditions.profitTarget && pnlPercent >= conditions.profitTarget) {
     return {
       symbol: position.symbol,
       action: 'SELL',
@@ -480,7 +480,7 @@ async function checkExitConditions(
   }
 
   // Check stop loss
-  if (pnlPercent <= -conditions.stopLoss) {
+  if (conditions.stopLoss && pnlPercent <= -conditions.stopLoss) {
     return {
       symbol: position.symbol,
       action: 'SELL',
