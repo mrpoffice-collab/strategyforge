@@ -4,6 +4,8 @@ import { TrendingUp, TrendingDown, Activity, DollarSign, Target, BarChart3, Radi
 import { RefreshButton } from '@/components/RefreshButton'
 
 export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
+export const revalidate = 0
 
 async function getStrategies() {
   const strategies = await prisma.strategy.findMany({
@@ -123,6 +125,9 @@ export default async function Dashboard() {
               >
                 Diary
               </Link>
+              <span className="text-xs text-slate-400" title="Last server render">
+                {new Date().toLocaleTimeString()}
+              </span>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
                 <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                 Live
