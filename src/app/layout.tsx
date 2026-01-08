@@ -13,6 +13,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  verification: {
+    google: '9P7qz0NOhYQvUysVKCiN010tkpOCU48JFmpStGPhGYw',
+  },
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://strategyforge.vercel.app'),
   title: "StrategyForge - Autonomous Swing Trading Simulator",
   description: "Compare and analyze swing trading strategies with real-time simulations. Track performance, win rates, and P&L across multiple whitepaper-based strategies.",
   openGraph: {

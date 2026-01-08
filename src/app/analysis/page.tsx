@@ -163,10 +163,22 @@ export default function AnalysisPage() {
           </Link>
           <div className="flex items-center gap-4">
             <Link
+              href="/"
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              Leaderboard
+            </Link>
+            <Link
               href="/analysis"
               className="text-sm text-slate-900 font-medium"
             >
               Analysis
+            </Link>
+            <Link
+              href="/diary"
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              Diary
             </Link>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-emerald-800 border border-green-500/20">
               <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>

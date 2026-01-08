@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import prisma from '@/lib/prisma'
-import { TrendingUp, TrendingDown, Activity, DollarSign, Target, BarChart3, Radio, Clock, Briefcase, Wallet, PiggyBank } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, DollarSign, Target, BarChart3, Radio, Clock, Briefcase, Wallet, PiggyBank, Zap } from 'lucide-react'
 import { RefreshButton } from '@/components/RefreshButton'
 
 export const dynamic = 'force-dynamic'
@@ -15,18 +15,42 @@ async function getStrategies() {
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
+      trades: {
+        where: {
+          exitDate: { not: null },
+          holdTimeHours: { gt: 0 },
+        },
+        select: {
+          profitLossPercent: true,
+          holdTimeHours: true,
+        },
+      },
     },
     orderBy: { name: 'asc' },
   })
 
   return strategies.map((strategy) => {
     const simulation = strategy.simulations[0]
+
+    // Calculate average daily return from completed trades
+    let avgDailyReturn = 0
+    if (strategy.trades.length > 0) {
+      const dailyReturns = strategy.trades
+        .filter(t => t.profitLossPercent !== null && t.holdTimeHours !== null && t.holdTimeHours > 0)
+        .map(t => (t.profitLossPercent! / (t.holdTimeHours! / 24)))
+
+      if (dailyReturns.length > 0) {
+        avgDailyReturn = dailyReturns.reduce((sum, r) => sum + r, 0) / dailyReturns.length
+      }
+    }
+
     return {
       id: strategy.id,
       name: strategy.name,
       description: strategy.description,
       whitepaperAuthor: strategy.whitepaperAuthor,
       status: strategy.status,
+      avgDailyReturn,
       simulation: simulation ? {
         currentCapital: simulation.currentCapital,
         totalPL: simulation.totalPL,
@@ -84,6 +108,12 @@ export default async function Dashboard() {
   }, 0)
   const actualWinRate = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 0
 
+  // Calculate overall average daily return across all strategies
+  const strategiesWithDailyReturn = strategies.filter(s => s.avgDailyReturn !== 0)
+  const overallDailyReturn = strategiesWithDailyReturn.length > 0
+    ? strategiesWithDailyReturn.reduce((sum, s) => sum + s.avgDailyReturn, 0) / strategiesWithDailyReturn.length
+    : 0
+
   // Position values
   const investedValue = openPositions.reduce((sum, p) => sum + p.currentValue, 0)
   const unrealizedPL = openPositions.reduce((sum, p) => sum + p.unrealizedPL, 0)
@@ -139,7 +169,7 @@ export default async function Dashboard() {
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Aggregate Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-4 mb-8">
           <div className="bg-white rounded-xl p-4 border border-slate-200">
             <div className="flex items-center gap-2 text-slate-600 text-sm mb-1">
               <DollarSign className="w-4 h-4" />
@@ -197,6 +227,16 @@ export default async function Dashboard() {
             </div>
             <div className="text-xs text-slate-500">{totalWins}W / {totalTrades - totalWins}L</div>
           </div>
+          <div className="bg-white rounded-xl p-4 border border-yellow-500/30">
+            <div className="flex items-center gap-2 text-yellow-600 text-sm mb-1">
+              <Zap className="w-4 h-4" />
+              Daily Ret
+            </div>
+            <div className={`text-2xl font-bold ${overallDailyReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {overallDailyReturn >= 0 ? '+' : ''}{overallDailyReturn.toFixed(2)}%
+            </div>
+            <div className="text-xs text-slate-500">/day avg</div>
+          </div>
           <div className="bg-white rounded-xl p-4 border border-blue-800/50">
             <div className="flex items-center gap-2 text-blue-400 text-sm mb-1">
               <Radio className="w-4 h-4" />
@@ -224,6 +264,7 @@ export default async function Dashboard() {
                   <th className="px-6 py-3 font-medium">Rank</th>
                   <th className="px-6 py-3 font-medium">Strategy</th>
                   <th className="px-6 py-3 font-medium text-right">P&L</th>
+                  <th className="px-6 py-3 font-medium text-right">Daily Ret</th>
                   <th className="px-6 py-3 font-medium text-right">Win Rate</th>
                   <th className="px-6 py-3 font-medium text-right">Trades</th>
                   <th className="px-6 py-3 font-medium text-right">Cash</th>
@@ -268,6 +309,12 @@ export default async function Dashboard() {
                         <div className={`text-sm ${plPercent >= 0 ? 'text-green-500/70' : 'text-red-500/70'}`}>
                           {plPercent >= 0 ? '+' : ''}{plPercent.toFixed(1)}%
                         </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className={`font-medium ${strategy.avgDailyReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {strategy.avgDailyReturn >= 0 ? '+' : ''}{strategy.avgDailyReturn.toFixed(2)}%
+                        </div>
+                        <div className="text-xs text-slate-500">/day</div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className={`font-medium ${winRate >= 50 ? 'text-green-500' : winRate > 0 ? 'text-yellow-500' : 'text-slate-500'}`}>

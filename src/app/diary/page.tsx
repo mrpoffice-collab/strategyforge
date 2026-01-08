@@ -85,6 +85,9 @@ export default function DiaryPage() {
             <span className="text-xl font-bold text-slate-900">StrategyForge</span>
           </Link>
           <div className="flex items-center gap-4">
+            <Link href="/" className="text-sm text-slate-600 hover:text-slate-900">
+              Leaderboard
+            </Link>
             <Link href="/analysis" className="text-sm text-slate-600 hover:text-slate-900">
               Analysis
             </Link>
@@ -131,10 +134,6 @@ export default function DiaryPage() {
           </button>
         </div>
 
-        <p className="text-slate-600 mb-8">
-          Weekly summaries of what's working, what's not, and key lessons learned.
-          Each entry is written at a 9th grade level so it's easy to understand.
-        </p>
 
         {entries.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-lg border border-slate-200">
