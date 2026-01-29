@@ -21,7 +21,7 @@ function getMarketSession(): string {
 
 // Process in batches to avoid timeout (runs every 5 min)
 const MAX_SIGNALS_PER_RUN = 30
-const MAX_EXITS_PER_RUN = 15
+const MAX_EXITS_PER_RUN = 50  // Increased to close more positions per run
 
 // Strategy key to database ID mapping - these ARE the actual strategy IDs in the database
 const STRATEGY_KEY_MAP: Record<string, string> = {
@@ -86,11 +86,11 @@ export async function POST(request: Request) {
       skipReasons: {} as Record<string, number>, // Track why signals were skipped
     }
 
-    // STEP 1: Check exits for existing positions (limited batch)
+    // STEP 1: Check exits for existing positions (prioritize most profitable)
     const positions = await prisma.position.findMany({
       include: { simulation: { include: { strategy: true } } },
       take: MAX_EXITS_PER_RUN,
-      orderBy: { entryDate: 'asc' },
+      orderBy: { unrealizedPLPercent: 'desc' },  // Check most profitable first
     })
 
     for (const position of positions) {
