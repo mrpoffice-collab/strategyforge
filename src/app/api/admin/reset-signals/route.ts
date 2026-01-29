@@ -9,13 +9,10 @@ export async function POST() {
     // Get current state before reset
     const beforeCount = await prisma.screenerSignal.count({ where: { processed: true } })
 
-    // Reset all signals from the last 7 days to unprocessed
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-
+    // Reset ALL processed signals to unprocessed
     const result = await prisma.screenerSignal.updateMany({
       where: {
         processed: true,
-        scannedAt: { gte: sevenDaysAgo },
       },
       data: { processed: false },
     })

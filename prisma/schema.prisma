@@ -249,24 +249,32 @@ model ScreenerSignal {
   @@map("ScreenerSignal")
 }
 
-// Weekly diary entries with AI-generated summaries
+// Diary entries with AI-generated summaries (generated on-demand since last entry)
 model DiaryEntry {
   id             String     @id @default(cuid())
-  weekNumber     Int        // Week of the year (1-52)
-  year           Int
-  weekStart      DateTime   // Monday of the week
-  weekEnd        DateTime   // Friday of the week
+  entryNumber    Int        @default(autoincrement()) // Sequential entry number
+
+  // Period covered - new fields (populated from old weekStart/weekEnd during migration)
+  periodStart    DateTime?  // Start of the period covered
+  periodEnd      DateTime?  // End of the period covered
+
+  // Legacy week-based fields (kept for migration, will be removed later)
+  weekNumber     Int?       // Week of the year (1-52) - DEPRECATED
+  year           Int?       // DEPRECATED
+  weekStart      DateTime?  // Monday of the week - DEPRECATED
+  weekEnd        DateTime?  // Friday of the week - DEPRECATED
 
   // Summary content (AI-generated)
-  title          String     // e.g., "Week 2: Finding Our Footing"
+  title          String     // e.g., "Entry #5: Momentum Building"
   summary        String     @db.Text  // The main diary content
 
-  // Key metrics for the week
+  // Key metrics for the period
   tradesOpened   Int        @default(0)
   tradesClosed   Int        @default(0)
   winCount       Int        @default(0)
   lossCount      Int        @default(0)
-  weeklyPL       Float      @default(0)
+  periodPL       Float      @default(0)
+  weeklyPL       Float?     // DEPRECATED - use periodPL
 
   // What worked / What didn't (AI-extracted)
   whatWorked     String[]   // Array of bullet points
@@ -276,8 +284,8 @@ model DiaryEntry {
   generatedAt    DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  @@unique([weekNumber, year])
-  @@index([year, weekNumber])
+  @@index([generatedAt])
+  @@index([entryNumber])
 }
 
 // Cron execution log for debugging

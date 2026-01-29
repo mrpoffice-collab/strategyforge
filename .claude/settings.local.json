@@ -17,7 +17,12 @@
       "Bash(done)",
       "Bash(cat:*)",
       "Bash(npm run dev:*)",
-      "Bash(powershell -Command \"Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force; Remove-Item -Force ''C:\\\\Users\\\\mrpof\\\\APPS Homemade\\\\strategyforge\\\\.next\\\\dev\\\\lock'' -ErrorAction SilentlyContinue\")"
+      "Bash(powershell -Command \"Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force; Remove-Item -Force ''C:\\\\Users\\\\mrpof\\\\APPS Homemade\\\\strategyforge\\\\.next\\\\dev\\\\lock'' -ErrorAction SilentlyContinue\")",
+      "Bash(npx tsc:*)",
+      "Bash(npx prisma db execute:*)",
+      "Bash(curl -s \"https://strategyforge.vercel.app/api/admin/reset-signals\")",
+      "Bash(curl -s \"https://strategyforge-mbsvw2p8c-meschelles-projects.vercel.app/api/admin/reset-signals\")",
+      "Bash(curl -s -X POST \"https://strategyforge-mbsvw2p8c-meschelles-projects.vercel.app/api/admin/reset-signals\")"
     ]
   }
 }

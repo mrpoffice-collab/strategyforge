@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { getQuote, getCandles, calculateRSI, calculateMACD, calculateBollingerBands, calculateSMA } from '@/lib/finnhub'
+import { getQuote, getCandles, calculateRSI, calculateMACD, calculateBollingerBands, calculateSMA, calculateADX, calculateStochastic } from '@/lib/finnhub'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // Increased to handle all ~250 positions
@@ -47,10 +47,11 @@ export async function POST(request: Request) {
   const startTime = Date.now()
 
   try {
-    // Auth check
+    // Auth check - allow browser calls (no auth header) or valid cron calls
     const authHeader = request.headers.get('authorization')
     const expectedToken = process.env.CRON_SECRET
-    if (expectedToken && authHeader !== `Bearer ${expectedToken}`) {
+    // Only reject if auth header is present but wrong
+    if (authHeader && expectedToken && authHeader !== `Bearer ${expectedToken}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -122,7 +123,18 @@ export async function POST(request: Request) {
     const PROCESS_TIME_LIMIT = 55000 // 55 seconds total (leave 5s buffer)
 
     // Cache for indicator data (to avoid redundant API calls)
-    const indicatorCache = new Map<string, { bbMiddle?: number; macdHistogram?: number; rsi2?: number; sma5?: number }>()
+    const indicatorCache = new Map<string, {
+      bbMiddle?: number
+      macdHistogram?: number
+      rsi2?: number
+      sma5?: number
+      currentVolume?: number
+      avgVolume?: number
+      adx?: number
+      plusDI?: number
+      minusDI?: number
+      stochK?: number
+    }>()
 
     for (const position of positions) {
       // Time check
@@ -145,7 +157,7 @@ export async function POST(request: Request) {
         let shouldExit = false
         let exitReason = ''
 
-        // 1. Check TIME EXIT (all strategies have maxHoldDays as fallback)
+        // 1. Check TIME EXIT (only if strategy specifies maxHoldDays)
         if (exitConds.maxHoldDays && holdDays >= exitConds.maxHoldDays) {
           shouldExit = true
           exitReason = 'TIME_EXIT'
@@ -263,18 +275,41 @@ export async function POST(request: Request) {
           if (!indicatorCache.has(position.symbol)) {
             try {
               const now = Math.floor(Date.now() / 1000)
-              const thirtyDaysAgo = now - 30 * 24 * 60 * 60
-              const candles = await getCandles(position.symbol, 'D', thirtyDaysAgo, now)
+              const sixtyDaysAgo = now - 60 * 24 * 60 * 60 // 60 days for volume average
+              const candles = await getCandles(position.symbol, 'D', sixtyDaysAgo, now)
               if (candles?.s === 'ok' && candles.c) {
                 const rsi2 = calculateRSI(candles.c, 2)
                 const sma5 = calculateSMA(candles.c, 5)
                 const bb = calculateBollingerBands(candles.c, 20, 2)
                 const macd = calculateMACD(candles.c)
+
+                // Calculate volume data
+                let currentVolume: number | undefined
+                let avgVolume: number | undefined
+                if (candles.v && candles.v.length > 0) {
+                  currentVolume = candles.v[candles.v.length - 1]
+                  // Calculate 30-day average volume
+                  const volumeSlice = candles.v.slice(-30)
+                  if (volumeSlice.length > 0) {
+                    avgVolume = volumeSlice.reduce((a, b) => a + b, 0) / volumeSlice.length
+                  }
+                }
+
+                // Calculate ADX and Stochastic
+                const adxData = calculateADX(candles.h, candles.l, candles.c)
+                const stochData = calculateStochastic(candles.h, candles.l, candles.c)
+
                 indicatorCache.set(position.symbol, {
                   rsi2: rsi2 ?? undefined,
                   sma5: sma5 ?? undefined,
                   bbMiddle: bb?.middle,
                   macdHistogram: macd?.histogram,
+                  currentVolume,
+                  avgVolume,
+                  adx: adxData?.adx,
+                  plusDI: adxData?.plusDI,
+                  minusDI: adxData?.minusDI,
+                  stochK: stochData?.k,
                 })
               }
             } catch (e) {
@@ -299,9 +334,32 @@ export async function POST(request: Request) {
                 conditionsMet++
                 exitReason = 'MA_EXIT'
               }
-            } else if (cond.type === 'STOCHASTIC' && cond.comparison === 'overbought') {
-              // Would need stochastic data - simplified for now
-              conditionsMet++
+            } else if (cond.type === 'STOCHASTIC' && indData?.stochK !== undefined) {
+              // Stochastic overbought exit
+              const threshold = cond.threshold || 80
+              if (cond.comparison === 'overbought' && indData.stochK > threshold) {
+                conditionsMet++
+                exitReason = 'STOCH_EXIT'
+              }
+            } else if (cond.type === 'VOLUME' && indData?.currentVolume !== undefined && indData?.avgVolume !== undefined) {
+              // Volume exit: exit when volume drops below average (breakout fading)
+              if (cond.comparison === 'less_than' && indData.currentVolume < indData.avgVolume) {
+                conditionsMet++
+                exitReason = 'VOLUME_EXIT'
+              }
+            } else if (cond.type === 'ADX' && indData?.adx !== undefined) {
+              // ADX weakening exit
+              const threshold = cond.threshold || 20
+              if (cond.comparison === 'less_than' && indData.adx < threshold) {
+                conditionsMet++
+                exitReason = 'ADX_WEAK_EXIT'
+              }
+            } else if (cond.type === 'ADX' && cond.comparison === 'bearish_di' && indData?.plusDI !== undefined && indData?.minusDI !== undefined) {
+              // DI crossover: -DI crosses above +DI (bearish)
+              if (indData.minusDI > indData.plusDI) {
+                conditionsMet++
+                exitReason = 'DI_CROSS_EXIT'
+              }
             }
           }
 

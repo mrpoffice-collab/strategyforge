@@ -6,10 +6,7 @@ import Anthropic from '@anthropic-ai/sdk'
 export async function GET() {
   try {
     const entries = await prisma.diaryEntry.findMany({
-      orderBy: [
-        { year: 'desc' },
-        { weekNumber: 'desc' }
-      ]
+      orderBy: { entryNumber: 'desc' }
     })
 
     return NextResponse.json({ entries })
@@ -19,82 +16,109 @@ export async function GET() {
   }
 }
 
-// POST: Generate a new diary entry for a specific week
-export async function POST(request: Request) {
+// POST: Generate a new diary entry since the last one
+export async function POST() {
   try {
-    const body = await request.json().catch(() => ({}))
-    const { weekNumber, year } = body
-
-    // Calculate current week if not provided
-    const now = new Date()
-    const targetYear = year || now.getFullYear()
-    const targetWeek = weekNumber || getWeekNumber(now)
-
-    // Check if entry already exists
-    const existing = await prisma.diaryEntry.findUnique({
-      where: { weekNumber_year: { weekNumber: targetWeek, year: targetYear } }
+    // Find the most recent diary entry
+    const lastEntry = await prisma.diaryEntry.findFirst({
+      orderBy: { entryNumber: 'desc' }
     })
 
-    if (existing) {
-      return NextResponse.json({
-        entry: existing,
-        message: 'Entry already exists for this week'
+    const now = new Date()
+    let periodStart: Date
+
+    if (lastEntry && lastEntry.periodEnd) {
+      periodStart = lastEntry.periodEnd
+    } else if (lastEntry && lastEntry.weekEnd) {
+      periodStart = lastEntry.weekEnd
+    } else {
+      const earliestTrade = await prisma.trade.findFirst({
+        orderBy: { entryDate: 'asc' },
+        select: { entryDate: true }
       })
+      periodStart = earliestTrade?.entryDate || new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
     }
 
-    // Calculate week boundaries
-    const { weekStart, weekEnd } = getWeekBoundaries(targetWeek, targetYear)
-
-    // Fetch trades for this week
-    const trades = await prisma.trade.findMany({
+    // Fetch trades with FULL strategy details including entry/exit conditions
+    const tradesInPeriod = await prisma.trade.findMany({
       where: {
         OR: [
-          { entryDate: { gte: weekStart, lte: weekEnd } },
-          { exitDate: { gte: weekStart, lte: weekEnd } }
+          { entryDate: { gte: periodStart } },
+          { exitDate: { gte: periodStart } }
         ]
       },
       include: {
-        strategy: { select: { name: true } }
+        strategy: {
+          select: {
+            name: true,
+            description: true,
+            whitepaperTitle: true,
+            whitepaperAuthor: true,
+            entryConditions: true,
+            exitConditions: true
+          }
+        }
       },
       orderBy: { entryDate: 'asc' }
     })
 
-    // Get strategy performance for the week
-    const strategyPerformance = await getStrategyPerformanceForWeek(weekStart, weekEnd)
+    const openPositions = await prisma.position.count()
 
-    // Calculate week stats
-    const tradesOpened = trades.filter(t => t.entryDate >= weekStart && t.entryDate <= weekEnd).length
-    const closedTrades = trades.filter(t => t.exitDate && t.exitDate >= weekStart && t.exitDate <= weekEnd)
+    if (tradesInPeriod.length === 0 && openPositions === 0) {
+      return NextResponse.json({
+        error: 'No trading activity since last entry',
+        lastEntryDate: lastEntry?.periodEnd || null
+      }, { status: 400 })
+    }
+
+    // Get all strategies for reference
+    const strategies = await prisma.strategy.findMany({
+      select: {
+        name: true,
+        description: true,
+        whitepaperTitle: true,
+        whitepaperAuthor: true,
+        entryConditions: true,
+        exitConditions: true
+      }
+    })
+
+    // Get strategy performance for the period
+    const strategyPerformance = await getStrategyPerformanceForPeriod(periodStart, now)
+
+    // Calculate period stats
+    const tradesOpened = tradesInPeriod.filter(t => t.entryDate >= periodStart).length
+    const closedTrades = tradesInPeriod.filter(t => t.exitDate && t.exitDate >= periodStart)
     const tradesClosed = closedTrades.length
     const winCount = closedTrades.filter(t => (t.profitLoss || 0) > 0).length
     const lossCount = closedTrades.filter(t => (t.profitLoss || 0) <= 0).length
-    const weeklyPL = closedTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
+    const periodPL = closedTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
 
-    // Generate AI summary
+    const daysCovered = Math.ceil((now.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24))
+
+    // Generate AI summary with full context
     const diaryContent = await generateDiarySummary({
-      weekNumber: targetWeek,
-      year: targetYear,
-      weekStart,
-      weekEnd,
-      trades,
+      entryNumber: (lastEntry?.entryNumber || 0) + 1,
+      periodStart,
+      periodEnd: now,
+      daysCovered,
+      trades: tradesInPeriod,
+      strategies,
       strategyPerformance,
-      stats: { tradesOpened, tradesClosed, winCount, lossCount, weeklyPL }
+      stats: { tradesOpened, tradesClosed, winCount, lossCount, periodPL }
     })
 
-    // Save to database
     const entry = await prisma.diaryEntry.create({
       data: {
-        weekNumber: targetWeek,
-        year: targetYear,
-        weekStart,
-        weekEnd,
+        periodStart,
+        periodEnd: now,
         title: diaryContent.title,
         summary: diaryContent.summary,
         tradesOpened,
         tradesClosed,
         winCount,
         lossCount,
-        weeklyPL,
+        periodPL,
         whatWorked: diaryContent.whatWorked,
         whatDidnt: diaryContent.whatDidnt,
         keyTakeaways: diaryContent.keyTakeaways
@@ -108,38 +132,10 @@ export async function POST(request: Request) {
   }
 }
 
-function getWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-  const dayNum = d.getUTCDay() || 7
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
-}
-
-function getWeekBoundaries(weekNumber: number, year: number): { weekStart: Date, weekEnd: Date } {
-  // Find first Thursday of the year (ISO week 1 contains first Thursday)
-  const jan4 = new Date(year, 0, 4)
-  const dayOfWeek = jan4.getDay() || 7
-  const firstMonday = new Date(jan4)
-  firstMonday.setDate(jan4.getDate() - dayOfWeek + 1)
-
-  // Calculate target week's Monday
-  const weekStart = new Date(firstMonday)
-  weekStart.setDate(firstMonday.getDate() + (weekNumber - 1) * 7)
-  weekStart.setHours(0, 0, 0, 0)
-
-  // Friday of that week
-  const weekEnd = new Date(weekStart)
-  weekEnd.setDate(weekStart.getDate() + 4)
-  weekEnd.setHours(23, 59, 59, 999)
-
-  return { weekStart, weekEnd }
-}
-
-async function getStrategyPerformanceForWeek(weekStart: Date, weekEnd: Date) {
+async function getStrategyPerformanceForPeriod(periodStart: Date, periodEnd: Date) {
   const trades = await prisma.trade.findMany({
     where: {
-      exitDate: { gte: weekStart, lte: weekEnd }
+      exitDate: { gte: periodStart, lte: periodEnd }
     },
     include: {
       strategy: { select: { name: true } }
@@ -153,12 +149,13 @@ async function getStrategyPerformanceForWeek(weekStart: Date, weekEnd: Date) {
     losses: number
     pl: number
     avgReturn: number
+    avgHoldHours: number
   }> = {}
 
   for (const trade of trades) {
     const name = trade.strategy.name
     if (!strategyStats[name]) {
-      strategyStats[name] = { name, trades: 0, wins: 0, losses: 0, pl: 0, avgReturn: 0 }
+      strategyStats[name] = { name, trades: 0, wins: 0, losses: 0, pl: 0, avgReturn: 0, avgHoldHours: 0 }
     }
     strategyStats[name].trades++
     if ((trade.profitLoss || 0) > 0) {
@@ -168,33 +165,50 @@ async function getStrategyPerformanceForWeek(weekStart: Date, weekEnd: Date) {
     }
     strategyStats[name].pl += trade.profitLoss || 0
     strategyStats[name].avgReturn += trade.profitLossPercent || 0
+    strategyStats[name].avgHoldHours += trade.holdTimeHours || 0
   }
 
-  // Calculate averages
   for (const stat of Object.values(strategyStats)) {
-    stat.avgReturn = stat.trades > 0 ? stat.avgReturn / stat.trades : 0
+    if (stat.trades > 0) {
+      stat.avgReturn = stat.avgReturn / stat.trades
+      stat.avgHoldHours = stat.avgHoldHours / stat.trades
+    }
   }
 
   return Object.values(strategyStats).sort((a, b) => b.pl - a.pl)
 }
 
+interface StrategyInfo {
+  name: string
+  description: string
+  whitepaperTitle: string | null
+  whitepaperAuthor: string | null
+  entryConditions: unknown
+  exitConditions: unknown
+}
+
+interface TradeWithStrategy {
+  symbol: string
+  side: string
+  entryDate: Date
+  entryPrice: number
+  exitDate: Date | null
+  exitPrice: number | null
+  profitLoss: number | null
+  profitLossPercent: number | null
+  exitReason: string | null
+  holdTimeHours: number | null
+  indicatorsAtEntry: unknown
+  strategy: StrategyInfo
+}
+
 interface DiaryInput {
-  weekNumber: number
-  year: number
-  weekStart: Date
-  weekEnd: Date
-  trades: Array<{
-    symbol: string
-    side: string
-    entryDate: Date
-    entryPrice: number
-    exitDate: Date | null
-    exitPrice: number | null
-    profitLoss: number | null
-    profitLossPercent: number | null
-    exitReason: string | null
-    strategy: { name: string }
-  }>
+  entryNumber: number
+  periodStart: Date
+  periodEnd: Date
+  daysCovered: number
+  trades: TradeWithStrategy[]
+  strategies: StrategyInfo[]
   strategyPerformance: Array<{
     name: string
     trades: number
@@ -202,13 +216,14 @@ interface DiaryInput {
     losses: number
     pl: number
     avgReturn: number
+    avgHoldHours: number
   }>
   stats: {
     tradesOpened: number
     tradesClosed: number
     winCount: number
     lossCount: number
-    weeklyPL: number
+    periodPL: number
   }
 }
 
@@ -223,96 +238,195 @@ async function generateDiarySummary(input: DiaryInput): Promise<{
     apiKey: process.env.ANTHROPIC_API_KEY
   })
 
-  const prompt = buildPrompt(input)
+  const prompt = buildAnalyticalPrompt(input)
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 2000,
+    max_tokens: 3000,
     messages: [{ role: 'user', content: prompt }]
   })
 
   const text = response.content[0].type === 'text' ? response.content[0].text : ''
-
-  // Parse the response
   return parseAIResponse(text, input)
 }
 
-function buildPrompt(input: DiaryInput): string {
-  const { weekNumber, year, stats, strategyPerformance, trades } = input
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  })
+}
+
+function formatConditions(conditions: unknown): string {
+  if (!conditions) return 'Not specified'
+  try {
+    const c = conditions as Record<string, unknown>
+    const parts: string[] = []
+
+    if (c.rsiBelow) parts.push(`RSI below ${c.rsiBelow}`)
+    if (c.rsiAbove) parts.push(`RSI above ${c.rsiAbove}`)
+    if (c.rsi2Below) parts.push(`RSI(2) below ${c.rsi2Below}`)
+    if (c.priceAboveSMA) parts.push(`Price above ${c.priceAboveSMA}-day SMA`)
+    if (c.priceBelowSMA) parts.push(`Price below ${c.priceBelowSMA}-day SMA`)
+    if (c.macdCrossover) parts.push('MACD bullish crossover')
+    if (c.macdCrossunder) parts.push('MACD bearish crossover')
+    if (c.bollingerBreakout) parts.push(`Bollinger Band breakout (${c.bollingerBreakout})`)
+    if (c.stochasticOversold) parts.push(`Stochastic oversold (<${c.stochasticOversold})`)
+    if (c.adxAbove) parts.push(`ADX above ${c.adxAbove} (strong trend)`)
+    if (c.volumeSpike) parts.push(`Volume spike (>${c.volumeSpike}x average)`)
+
+    // Exit conditions
+    if (c.profitTarget) parts.push(`Profit target: ${c.profitTarget}%`)
+    if (c.stopLoss) parts.push(`Stop loss: ${c.stopLoss}%`)
+    if (c.trailingStop) parts.push(`Trailing stop: ${c.trailingStop}%`)
+    if (c.atrStop) parts.push(`ATR-based stop: ${c.atrStop}x ATR`)
+    if (c.exitAboveSMA) parts.push(`Exit when price above ${c.exitAboveSMA}-day SMA`)
+    if (c.macdExit) parts.push('Exit on MACD signal')
+    if (c.bollingerExit) parts.push('Exit at Bollinger middle band')
+    if (c.timeLimit) parts.push(`Time limit: ${c.timeLimit} days`)
+
+    return parts.length > 0 ? parts.join(', ') : JSON.stringify(conditions)
+  } catch {
+    return String(conditions)
+  }
+}
+
+function formatIndicators(indicators: unknown): string {
+  if (!indicators) return 'No indicator data'
+  try {
+    const ind = indicators as Record<string, number>
+    const parts: string[] = []
+
+    if (ind.rsi14 !== undefined) parts.push(`RSI(14): ${ind.rsi14.toFixed(1)}`)
+    if (ind.rsi2 !== undefined) parts.push(`RSI(2): ${ind.rsi2.toFixed(1)}`)
+    if (ind.macd !== undefined) parts.push(`MACD: ${ind.macd.toFixed(3)}`)
+    if (ind.macdHistogram !== undefined) parts.push(`MACD Hist: ${ind.macdHistogram.toFixed(3)}`)
+    if (ind.bbUpper !== undefined && ind.bbLower !== undefined) {
+      parts.push(`BB: ${ind.bbLower.toFixed(2)}-${ind.bbUpper.toFixed(2)}`)
+    }
+    if (ind.atr14 !== undefined) parts.push(`ATR: ${ind.atr14.toFixed(2)}`)
+    if (ind.adx !== undefined) parts.push(`ADX: ${ind.adx.toFixed(1)}`)
+    if (ind.stochK !== undefined) parts.push(`Stoch %K: ${ind.stochK.toFixed(1)}`)
+    if (ind.sma20 !== undefined) parts.push(`SMA20: ${ind.sma20.toFixed(2)}`)
+    if (ind.sma50 !== undefined) parts.push(`SMA50: ${ind.sma50.toFixed(2)}`)
+
+    return parts.length > 0 ? parts.join(' | ') : 'Limited data'
+  } catch {
+    return 'Error parsing indicators'
+  }
+}
+
+function buildAnalyticalPrompt(input: DiaryInput): string {
+  const { entryNumber, periodStart, periodEnd, daysCovered, stats, strategyPerformance, trades, strategies } = input
 
   const winRate = stats.tradesClosed > 0
     ? ((stats.winCount / stats.tradesClosed) * 100).toFixed(1)
     : '0'
 
-  // Get top winners and losers
+  // Separate winners and losers with full details
   const closedTrades = trades.filter(t => t.exitDate !== null)
-  const sortedByPL = [...closedTrades].sort((a, b) => (b.profitLoss || 0) - (a.profitLoss || 0))
-  const topWinners = sortedByPL.slice(0, 3).filter(t => (t.profitLoss || 0) > 0)
-  const topLosers = sortedByPL.slice(-3).reverse().filter(t => (t.profitLoss || 0) < 0)
+  const winners = closedTrades.filter(t => (t.profitLoss || 0) > 0).sort((a, b) => (b.profitLoss || 0) - (a.profitLoss || 0))
+  const losers = closedTrades.filter(t => (t.profitLoss || 0) <= 0).sort((a, b) => (a.profitLoss || 0) - (b.profitLoss || 0))
 
-  return `You are writing a weekly trading diary for a swing trading simulation. Write at a 9th grade reading level - simple, clear, conversational. No jargon. Explain things like you're talking to a friend who's learning about trading.
+  // Build strategy reference
+  const strategyReference = strategies.map(s =>
+    `**${s.name}**${s.whitepaperAuthor ? ` (${s.whitepaperAuthor})` : ''}
+   - Theory: ${s.description}
+   - Entry rules: ${formatConditions(s.entryConditions)}
+   - Exit rules: ${formatConditions(s.exitConditions)}`
+  ).join('\n\n')
 
-WEEK ${weekNumber} OF ${year}
+  // Build detailed trade analysis for top winners
+  const winnerAnalysis = winners.slice(0, 5).map(t => {
+    const holdDays = t.holdTimeHours ? (t.holdTimeHours / 24).toFixed(1) : '?'
+    return `• ${t.symbol} via ${t.strategy.name}
+     Entry: $${t.entryPrice.toFixed(2)} → Exit: $${(t.exitPrice || 0).toFixed(2)}
+     Result: +$${(t.profitLoss || 0).toFixed(2)} (+${(t.profitLossPercent || 0).toFixed(1)}%)
+     Hold time: ${holdDays} days | Exit reason: ${t.exitReason || 'Unknown'}
+     Indicators at entry: ${formatIndicators(t.indicatorsAtEntry)}`
+  }).join('\n\n')
 
-WEEKLY STATS:
-- Trades opened: ${stats.tradesOpened}
-- Trades closed: ${stats.tradesClosed}
-- Wins: ${stats.winCount}
-- Losses: ${stats.lossCount}
-- Win rate: ${winRate}%
-- Weekly P&L: $${stats.weeklyPL.toFixed(2)}
+  // Build detailed trade analysis for losers
+  const loserAnalysis = losers.slice(0, 5).map(t => {
+    const holdDays = t.holdTimeHours ? (t.holdTimeHours / 24).toFixed(1) : '?'
+    return `• ${t.symbol} via ${t.strategy.name}
+     Entry: $${t.entryPrice.toFixed(2)} → Exit: $${(t.exitPrice || 0).toFixed(2)}
+     Result: -$${Math.abs(t.profitLoss || 0).toFixed(2)} (${(t.profitLossPercent || 0).toFixed(1)}%)
+     Hold time: ${holdDays} days | Exit reason: ${t.exitReason || 'Unknown'}
+     Indicators at entry: ${formatIndicators(t.indicatorsAtEntry)}`
+  }).join('\n\n')
 
-STRATEGY PERFORMANCE THIS WEEK:
-${strategyPerformance.map(s =>
-  `- ${s.name}: ${s.trades} trades, ${s.wins}W/${s.losses}L, $${s.pl.toFixed(2)} P&L, ${s.avgReturn.toFixed(1)}% avg return`
-).join('\n')}
+  return `You are a swing trading coach writing an educational diary entry. Your job is to TEACH the reader why trades won or lost by analyzing the strategy mechanics.
 
-TOP WINNERS:
-${topWinners.length > 0 ? topWinners.map(t =>
-  `- ${t.symbol} (${t.strategy.name}): +$${(t.profitLoss || 0).toFixed(2)} (+${(t.profitLossPercent || 0).toFixed(1)}%), exited via ${t.exitReason}`
-).join('\n') : 'None this week'}
+=== PERIOD OVERVIEW ===
+Entry #${entryNumber}: ${formatDate(periodStart)} to ${formatDate(periodEnd)} (${daysCovered} days)
 
-NOTABLE LOSSES:
-${topLosers.length > 0 ? topLosers.map(t =>
-  `- ${t.symbol} (${t.strategy.name}): $${(t.profitLoss || 0).toFixed(2)} (${(t.profitLossPercent || 0).toFixed(1)}%), exited via ${t.exitReason}`
-).join('\n') : 'None this week'}
+Stats: ${stats.tradesOpened} opened, ${stats.tradesClosed} closed
+Results: ${stats.winCount} wins, ${stats.lossCount} losses (${winRate}% win rate)
+P&L: $${stats.periodPL.toFixed(2)}
 
-Please write:
+=== STRATEGY REFERENCE (The Rules These Trades Followed) ===
+${strategyReference}
 
-1. TITLE: A short, catchy title for this week (e.g., "Week 2: Finding Our Groove" or "Week 3: Rough Waters")
+=== STRATEGY PERFORMANCE THIS PERIOD ===
+${strategyPerformance.length > 0 ? strategyPerformance.map(s =>
+  `${s.name}: ${s.trades} trades (${s.wins}W/${s.losses}L), $${s.pl.toFixed(2)} P&L, ${s.avgReturn.toFixed(1)}% avg, held ${(s.avgHoldHours/24).toFixed(1)} days avg`
+).join('\n') : 'No completed trades'}
 
-2. SUMMARY: A 2-3 paragraph diary entry explaining:
-   - How the week went overall
-   - What patterns or trends you noticed
-   - Any interesting observations about the strategies
-   - Keep it conversational and easy to understand
+=== WINNING TRADES (Analyze WHY these worked) ===
+${winnerAnalysis || 'No winners this period'}
 
-3. WHAT WORKED: 3-5 bullet points about what went well and why
+=== LOSING TRADES (Analyze WHY these failed) ===
+${loserAnalysis || 'No losers this period'}
 
-4. WHAT DIDN'T: 3-5 bullet points about what didn't work and possible reasons
+=== YOUR TASK ===
+Write an EDUCATIONAL diary entry that teaches the reader:
 
-5. KEY TAKEAWAYS: 2-3 main lessons or insights from this week
+1. TITLE: A descriptive title (e.g., "Entry #${entryNumber}: RSI Signals Shine, MACD Struggles")
 
-Format your response exactly like this:
-TITLE: [Your title here]
+2. SUMMARY (2-3 paragraphs):
+   - Overall performance narrative
+   - SPECIFICALLY explain which strategy mechanics worked and which didn't
+   - Connect the indicator readings to the outcomes
+   - Use plain language - explain what RSI being "oversold at 15" actually means
+
+3. WHAT WORKED (3-5 bullets):
+   - Be SPECIFIC about the strategy mechanics
+   - Example: "The RSI(2) strategy caught AAPL at extreme oversold (RSI=8), which historically bounces. It did."
+   - Explain WHY the entry/exit rules made sense for the market conditions
+   - Connect indicator values to outcomes
+
+4. WHAT DIDN'T WORK (3-5 bullets):
+   - Be SPECIFIC about what failed in the strategy
+   - Example: "MACD crossover triggered on XYZ, but ADX was only 12 (weak trend), so there was no follow-through."
+   - Explain what the indicators were telling us vs what actually happened
+   - Identify if it was bad entry timing, wrong exit, or market conditions
+
+5. KEY LESSONS (2-3 bullets):
+   - Actionable insights about the strategies
+   - What conditions make each strategy work better or worse?
+   - What should we watch for next time?
+
+FORMAT:
+TITLE: [title]
 
 SUMMARY:
-[Your summary paragraphs here]
+[paragraphs]
 
 WHAT WORKED:
-- [Point 1]
-- [Point 2]
-- [Point 3]
+- [specific analysis with numbers]
+- [etc]
 
 WHAT DIDN'T:
-- [Point 1]
-- [Point 2]
-- [Point 3]
+- [specific analysis with numbers]
+- [etc]
 
-KEY TAKEAWAYS:
-- [Takeaway 1]
-- [Takeaway 2]
-- [Takeaway 3]`
+KEY LESSONS:
+- [actionable insight]
+- [etc]
+
+Remember: Be a TEACHER. Don't just say "RSI strategy lost" - explain WHY based on the actual indicator values and market behavior.`
 }
 
 function parseAIResponse(text: string, input: DiaryInput): {
@@ -330,15 +444,12 @@ function parseAIResponse(text: string, input: DiaryInput): {
     keyTakeaways: [] as string[]
   }
 
-  // Extract title
   const titleMatch = text.match(/TITLE:\s*(.+?)(?:\n|$)/i)
-  sections.title = titleMatch ? titleMatch[1].trim() : `Week ${input.weekNumber}: Trading Summary`
+  sections.title = titleMatch ? titleMatch[1].trim() : `Entry #${input.entryNumber}: Trading Update`
 
-  // Extract summary
   const summaryMatch = text.match(/SUMMARY:\s*([\s\S]+?)(?=WHAT WORKED:|$)/i)
   sections.summary = summaryMatch ? summaryMatch[1].trim() : 'No summary available.'
 
-  // Extract what worked
   const workedMatch = text.match(/WHAT WORKED:\s*([\s\S]+?)(?=WHAT DIDN'?T:|$)/i)
   if (workedMatch) {
     sections.whatWorked = workedMatch[1]
@@ -348,8 +459,7 @@ function parseAIResponse(text: string, input: DiaryInput): {
       .filter(Boolean)
   }
 
-  // Extract what didn't work
-  const didntMatch = text.match(/WHAT DIDN'?T.*?:\s*([\s\S]+?)(?=KEY TAKEAWAYS:|$)/i)
+  const didntMatch = text.match(/WHAT DIDN'?T.*?:\s*([\s\S]+?)(?=KEY LESSONS:|KEY TAKEAWAYS:|$)/i)
   if (didntMatch) {
     sections.whatDidnt = didntMatch[1]
       .split('\n')
@@ -358,8 +468,7 @@ function parseAIResponse(text: string, input: DiaryInput): {
       .filter(Boolean)
   }
 
-  // Extract key takeaways
-  const takeawaysMatch = text.match(/KEY TAKEAWAYS:\s*([\s\S]+?)$/i)
+  const takeawaysMatch = text.match(/KEY (?:LESSONS|TAKEAWAYS):\s*([\s\S]+?)$/i)
   if (takeawaysMatch) {
     sections.keyTakeaways = takeawaysMatch[1]
       .split('\n')

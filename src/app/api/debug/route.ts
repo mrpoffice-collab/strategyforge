@@ -11,6 +11,50 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const mode = searchParams.get('mode')
 
+  // State mode - show current system state for debugging
+  if (mode === 'state') {
+    const [strategies, simulations, signals, positions, trades] = await Promise.all([
+      prisma.strategy.findMany({
+        select: { id: true, name: true, status: true },
+      }),
+      prisma.simulation.findMany({
+        select: { id: true, strategyId: true, status: true, currentCapital: true, tradesCompleted: true },
+      }),
+      prisma.screenerSignal.count({ where: { processed: false } }),
+      prisma.position.count(),
+      prisma.trade.count({ where: { exitDate: null } }),
+    ])
+
+    const recentSignals = await prisma.screenerSignal.findMany({
+      where: { processed: false },
+      orderBy: { scannedAt: 'desc' },
+      take: 5,
+      select: { symbol: true, strategyKey: true, price: true, scannedAt: true },
+    })
+
+    return NextResponse.json({
+      mode: 'state',
+      timestamp: new Date().toISOString(),
+      strategies: {
+        count: strategies.length,
+        active: strategies.filter(s => s.status === 'active').length,
+        list: strategies,
+      },
+      simulations: {
+        count: simulations.length,
+        running: simulations.filter(s => s.status === 'running').length,
+        withCapital: simulations.filter(s => s.status === 'running' && s.currentCapital >= 100).length,
+        list: simulations,
+      },
+      signals: {
+        pending: signals,
+        recent: recentSignals,
+      },
+      positions: positions,
+      openTrades: trades,
+    })
+  }
+
   // Price comparison mode - compare stored vs live prices
   if (mode === 'compare') {
     const positions = await prisma.position.findMany({

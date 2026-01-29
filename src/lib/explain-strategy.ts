@@ -41,9 +41,19 @@ interface WhitepaperInfo {
   year: number | null
 }
 
+function getAuthorName(author: string | null): string {
+  if (!author) return 'The research'
+  // Remove year patterns like "(2004)" or "2004"
+  const cleaned = author.replace(/\s*\(?\d{4}\)?/g, '').trim()
+  if (!cleaned) return 'The research'
+  // Get the last name (last word)
+  const parts = cleaned.split(' ').filter(p => p.length > 0)
+  return parts.length > 0 ? parts[parts.length - 1] : 'The research'
+}
+
 export function explainEntry(conditions: EntryConditions, whitepaper: WhitepaperInfo): string[] {
   const explanations: string[] = []
-  const author = whitepaper.author?.split(' ').pop() || 'The research'
+  const author = getAuthorName(whitepaper.author)
 
   for (const ind of conditions.indicators) {
     const type = ind.type?.toUpperCase() || ''
@@ -164,6 +174,16 @@ export function explainEntry(conditions: EntryConditions, whitepaper: Whitepaper
         )
         break
 
+      case 'PRICE_VS_52W_HIGH':
+        if (ind.comparison === 'greater_than') {
+          explanations.push(
+            `**Price within ${100 - (ind.threshold || 95)}% of 52-week high** — ${author} found that stocks near their yearly high tend to keep rising. ` +
+            `Traders use the 52-week high as a mental anchor - when a stock approaches it, many hesitate to buy higher even when the news is good. ` +
+            `This creates an opportunity: the stock is undervalued relative to its momentum.`
+          )
+        }
+        break
+
       case 'RSI_DIVERGENCE':
         explanations.push(
           `**Bullish divergence** — The stock made a lower low, but RSI made a higher low. ` +
@@ -199,7 +219,7 @@ export function explainEntry(conditions: EntryConditions, whitepaper: Whitepaper
 
 export function explainExit(conditions: ExitConditions, whitepaper: WhitepaperInfo): string[] {
   const explanations: string[] = []
-  const author = whitepaper.author?.split(' ').pop() || 'The research'
+  const author = getAuthorName(whitepaper.author)
 
   // Handle whitepaper-specific stop loss types
   if (conditions.stopLossType) {
@@ -278,6 +298,22 @@ export function explainExit(conditions: ExitConditions, whitepaper: WhitepaperIn
           explanations.push(
             `**Exit when Stochastic goes above ${ind.threshold || 80}** — The stock is now trading near its recent highs. ` +
             `It's stretched up like a rubber band. We take profits expecting it to pull back.`
+          )
+        }
+        break
+      case 'PRICE_VS_52W_HIGH':
+        if (ind.comparison === 'less_than') {
+          explanations.push(
+            `**Exit when price falls below ${ind.threshold}% of 52-week high** — The momentum that pushed the stock near its high has faded. ` +
+            `${author} exits when the stock drops too far from the high - the thesis is broken.`
+          )
+        }
+        break
+      case 'VOLUME':
+        if (ind.comparison === 'less_than') {
+          explanations.push(
+            `**Exit when volume drops below average** — The big players who pushed the price up are stepping away. ` +
+            `${author} says low volume after a breakout means the move is losing steam - time to take profits.`
           )
         }
         break

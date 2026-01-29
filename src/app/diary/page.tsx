@@ -2,21 +2,20 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { RefreshCw, BookOpen, TrendingUp, TrendingDown, Lightbulb, AlertCircle, CheckCircle } from 'lucide-react'
+import { RefreshCw, BookOpen, TrendingUp, TrendingDown, Lightbulb, AlertCircle, CheckCircle, Calendar } from 'lucide-react'
 
 interface DiaryEntry {
   id: string
-  weekNumber: number
-  year: number
-  weekStart: string
-  weekEnd: string
+  entryNumber: number
+  periodStart: string
+  periodEnd: string
   title: string
   summary: string
   tradesOpened: number
   tradesClosed: number
   winCount: number
   lossCount: number
-  weeklyPL: number
+  periodPL: number
   whatWorked: string[]
   whatDidnt: string[]
   keyTakeaways: string[]
@@ -28,6 +27,7 @@ export default function DiaryPage() {
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   async function fetchEntries() {
     try {
@@ -45,17 +45,21 @@ export default function DiaryPage() {
 
   async function generateEntry() {
     setGenerating(true)
+    setError(null)
     try {
       const res = await fetch('/api/diary', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}) // Generate for current week
+        headers: { 'Content-Type': 'application/json' }
       })
+      const data = await res.json()
       if (res.ok) {
         await fetchEntries()
+      } else {
+        setError(data.error || 'Failed to generate entry')
       }
     } catch (error) {
       console.error('Failed to generate entry:', error)
+      setError('Failed to generate entry')
     } finally {
       setGenerating(false)
     }
@@ -72,9 +76,23 @@ export default function DiaryPage() {
     })
   }
 
+  const formatFullDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    })
+  }
+
   const formatCurrency = (n: number) => {
     const prefix = n >= 0 ? '+$' : '-$'
     return prefix + Math.abs(n).toFixed(2)
+  }
+
+  const getDaysCovered = (start: string, end: string) => {
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+    return Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
   }
 
   const Header = () => (
@@ -130,17 +148,25 @@ export default function DiaryPage() {
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
-            {generating ? 'Generating...' : 'Generate This Week'}
+            {generating ? 'Generating...' : 'Generate Update'}
           </button>
         </div>
 
+        {error && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5" />
+              <span>{error}</span>
+            </div>
+          </div>
+        )}
 
         {entries.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-lg border border-slate-200">
             <BookOpen className="w-12 h-12 mx-auto text-slate-400 mb-4" />
             <p className="text-slate-600 mb-4">No diary entries yet.</p>
             <p className="text-sm text-slate-500">
-              Click "Generate This Week" to create your first entry.
+              Click "Generate Update" to create your first entry based on all trading activity.
             </p>
           </div>
         ) : (
@@ -157,14 +183,20 @@ export default function DiaryPage() {
                 >
                   <div className="flex justify-between items-start">
                     <div>
-                      <div className="text-sm text-slate-500 mb-1">
-                        Week {entry.weekNumber} • {formatDate(entry.weekStart)} - {formatDate(entry.weekEnd)}, {entry.year}
+                      <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
+                        <Calendar className="w-4 h-4" />
+                        <span>
+                          Entry #{entry.entryNumber} • {formatDate(entry.periodStart)} - {formatDate(entry.periodEnd)}
+                          <span className="text-slate-400 ml-1">
+                            ({getDaysCovered(entry.periodStart, entry.periodEnd)} days)
+                          </span>
+                        </span>
                       </div>
                       <h2 className="text-xl font-bold">{entry.title}</h2>
                     </div>
                     <div className="text-right">
-                      <div className={`text-xl font-bold ${entry.weeklyPL >= 0 ? 'text-emerald-800' : 'text-red-700'}`}>
-                        {formatCurrency(entry.weeklyPL)}
+                      <div className={`text-xl font-bold ${entry.periodPL >= 0 ? 'text-emerald-800' : 'text-red-700'}`}>
+                        {formatCurrency(entry.periodPL)}
                       </div>
                       <div className="text-sm text-slate-500">
                         {entry.winCount}W / {entry.lossCount}L

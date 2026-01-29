@@ -23,43 +23,26 @@ function getMarketSession(): string {
 const MAX_SIGNALS_PER_RUN = 30
 const MAX_EXITS_PER_RUN = 15
 
-// Strategy key patterns to match against strategy names (case-insensitive partial match)
-const STRATEGY_KEY_PATTERNS: Record<string, string[]> = {
-  'rsi_stochastic_oversold': ['rsi', 'stochastic', 'oversold'],
-  'adx_trend_pullback': ['adx', 'trend', 'pullback'],
-  'bollinger_squeeze': ['bollinger', 'squeeze'],
-  'macd_bb_volume': ['macd', 'bb', 'volume'],
-  'stochastic_rsi_sync': ['stochastic', 'rsi', 'sync'],
-  'rsi_mean_reversion': ['rsi', 'mean', 'reversion'],
-  'macd_momentum': ['macd', 'momentum'],
-  'volume_breakout': ['volume', 'breakout'],
-  '52_week_high_breakout': ['52', 'week', 'high'],
-  'adx_trend_rider': ['adx', 'trend', 'rider'],
-  'triple_ma_trend': ['triple', 'ma', 'trend'],
-  'momentum_persistence': ['momentum', 'persistence'],
-}
-
-// Build dynamic strategy mapping from database
-async function buildStrategyKeyMap(strategies: Array<{ id: string; name: string }>): Promise<Record<string, string>> {
-  const mapping: Record<string, string> = {}
-
-  for (const [key, patterns] of Object.entries(STRATEGY_KEY_PATTERNS)) {
-    // Find strategy whose name contains all patterns (case-insensitive)
-    const matchedStrategy = strategies.find(s => {
-      const nameLower = s.name.toLowerCase()
-      return patterns.every(p => nameLower.includes(p.toLowerCase()))
-    })
-    if (matchedStrategy) {
-      mapping[key] = matchedStrategy.id
-    }
-  }
-
-  return mapping
+// Strategy key to database ID mapping - these ARE the actual strategy IDs in the database
+const STRATEGY_KEY_MAP: Record<string, string> = {
+  'rsi_stochastic_oversold': 'strat_rsi_stochastic_double_oversold',
+  'adx_trend_pullback': 'strat_adx_trend_+_ma_pullback',
+  'bollinger_squeeze': 'strat_bollinger_squeeze_breakout',
+  'macd_bb_volume': 'strat_macd_bb_volume_triple_filter',
+  'stochastic_rsi_sync': 'strat_stochastic_rsi_momentum_sync',
+  'rsi_mean_reversion': 'strat_rsi_mean_reversion',
+  'macd_momentum': 'strat_macd_momentum_crossover',
+  'volume_breakout': 'strat_volume_breakout_scanner',
+  // Trend-following strategies (CUID format)
+  '52_week_high_breakout': 'cmjrkxxny00008sfmhyrvkbcs',
+  'adx_trend_rider': 'cmjrkxxtk00018sfm4vkptvmd',
+  'triple_ma_trend': 'cmjrkxxyc00028sfmj434l2m0',
+  'momentum_persistence': 'cmjrkxy3900038sfm5l2ldi05',
 }
 
 // Reverse lookup: get strategy key from strategy ID
-function getStrategyKeyById(strategyId: string, keyMap: Record<string, string>): string | undefined {
-  return Object.entries(keyMap).find(([_, id]) => id === strategyId)?.[0]
+function getStrategyKeyById(strategyId: string): string | undefined {
+  return Object.entries(STRATEGY_KEY_MAP).find(([_, id]) => id === strategyId)?.[0]
 }
 
 // POST /api/simulation/process-signals - Process screener signals into trades
@@ -214,14 +197,7 @@ export async function POST(request: Request) {
     })
 
     console.log(`Found ${strategiesWithCapital.length} strategies with capital >= $100`)
-
-    // Build dynamic strategy key mapping
-    const allStrategies = await prisma.strategy.findMany({
-      where: { status: 'active' },
-      select: { id: true, name: true },
-    })
-    const STRATEGY_KEY_MAP = await buildStrategyKeyMap(allStrategies)
-    console.log(`Strategy key mapping: ${Object.keys(STRATEGY_KEY_MAP).length} strategies mapped`)
+    console.log(`Strategy key mapping has ${Object.keys(STRATEGY_KEY_MAP).length} entries`)
 
     // Process up to 5 signals per strategy (ensures fair distribution)
     const SIGNALS_PER_STRATEGY = 5
@@ -237,7 +213,7 @@ export async function POST(request: Request) {
       if (!simulation) continue
 
       // Find the strategy key for this strategy ID
-      const strategyKey = getStrategyKeyById(strategy.id, STRATEGY_KEY_MAP)
+      const strategyKey = getStrategyKeyById(strategy.id)
       if (!strategyKey) {
         console.log(`No screener key for strategy: ${strategy.name} (id: ${strategy.id})`)
         continue

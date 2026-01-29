@@ -21,14 +21,24 @@ export async function POST() {
 
     // Fetch quotes for all symbols (with rate limiting)
     const quotes = new Map<string, number>()
+    const failedSymbols: string[] = []
+
     for (const symbol of symbols) {
-      const quote = await getQuote(symbol)
-      if (quote && quote.c > 0) {
-        quotes.set(symbol, quote.c)
+      try {
+        const quote = await getQuote(symbol)
+        if (quote && quote.c > 0) {
+          quotes.set(symbol, quote.c)
+        } else {
+          failedSymbols.push(symbol)
+        }
+      } catch (err) {
+        failedSymbols.push(`${symbol}:error`)
       }
       // Rate limit: 100ms between calls
       await new Promise(resolve => setTimeout(resolve, 100))
     }
+
+    console.log(`Fetched ${quotes.size}/${symbols.length} quotes, failed: ${failedSymbols.slice(0, 10).join(',')}`)
 
     // Update all positions with fresh prices
     let updated = 0
@@ -57,6 +67,9 @@ export async function POST() {
       updated,
       total: positions.length,
       symbols: symbols.length,
+      quotesFetched: quotes.size,
+      quotesFailed: failedSymbols.length,
+      failedSample: failedSymbols.slice(0, 5),
     })
   } catch (error) {
     console.error('Error refreshing positions:', error)

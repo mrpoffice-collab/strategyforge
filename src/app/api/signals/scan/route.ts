@@ -14,36 +14,13 @@ const SCAN_SYMBOLS = [
   'JPM', 'BAC', 'PFE', 'MRNA', 'F',
 ]
 
-// Strategy key patterns to match against strategy names (case-insensitive partial match)
-const STRATEGY_KEY_PATTERNS: Record<string, string[]> = {
-  'rsi_stochastic_oversold': ['rsi', 'stochastic', 'oversold'],
-  'adx_trend_pullback': ['adx', 'trend', 'pullback'],
-  'bollinger_squeeze': ['bollinger', 'squeeze'],
-  'macd_bb_volume': ['macd', 'bb', 'volume'],
-  'rsi_mean_reversion': ['rsi', 'mean', 'reversion'],
-}
-
-// Build dynamic strategy mapping from database
-async function buildStrategyKeyMap(): Promise<Record<string, string>> {
-  const strategies = await prisma.strategy.findMany({
-    where: { status: 'active' },
-    select: { id: true, name: true },
-  })
-
-  const mapping: Record<string, string> = {}
-
-  for (const [key, patterns] of Object.entries(STRATEGY_KEY_PATTERNS)) {
-    // Find strategy whose name contains all patterns (case-insensitive)
-    const matchedStrategy = strategies.find(s => {
-      const nameLower = s.name.toLowerCase()
-      return patterns.every(p => nameLower.includes(p.toLowerCase()))
-    })
-    if (matchedStrategy) {
-      mapping[key] = matchedStrategy.id
-    }
-  }
-
-  return mapping
+// Strategy key to database ID mapping - these ARE the actual strategy IDs
+const STRATEGY_KEY_MAP: Record<string, string> = {
+  'rsi_stochastic_oversold': 'strat_rsi_stochastic_double_oversold',
+  'adx_trend_pullback': 'strat_adx_trend_+_ma_pullback',
+  'bollinger_squeeze': 'strat_bollinger_squeeze_breakout',
+  'macd_bb_volume': 'strat_macd_bb_volume_triple_filter',
+  'rsi_mean_reversion': 'strat_rsi_mean_reversion',
 }
 
 interface CachedIndicators {
@@ -129,10 +106,6 @@ export async function POST() {
       usedCache: 0,
       fetchedFresh: 0,
     }
-
-    // Build dynamic strategy key mapping from database
-    const STRATEGY_KEY_MAP = await buildStrategyKeyMap()
-    console.log('Strategy key mapping:', Object.keys(STRATEGY_KEY_MAP).length, 'strategies mapped')
 
     // Get active strategies
     const strategies = await prisma.strategy.findMany({

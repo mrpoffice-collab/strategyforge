@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import prisma from '@/lib/prisma'
-import { TrendingUp, TrendingDown, Activity, DollarSign, Target, BarChart3, Radio, Clock, Briefcase, Wallet, PiggyBank, Zap } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, DollarSign, Target, BarChart3, Radio, Clock, Briefcase, Wallet, PiggyBank, Zap, CalendarDays } from 'lucide-react'
 import { RefreshButton } from '@/components/RefreshButton'
 
 export const dynamic = 'force-dynamic'
@@ -87,12 +87,30 @@ async function getOpenPositions() {
   })
 }
 
+async function getTodaysTrades() {
+  // Get trades that closed today
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  return prisma.trade.findMany({
+    where: {
+      exitDate: { gte: today },
+      profitLoss: { not: null },
+    },
+    select: {
+      profitLoss: true,
+      profitLossPercent: true,
+    },
+  })
+}
+
 export default async function Dashboard() {
-  const [strategies, screenerStats, recentTrades, openPositions] = await Promise.all([
+  const [strategies, screenerStats, recentTrades, openPositions, todaysTrades] = await Promise.all([
     getStrategies(),
     getScreenerStats(),
     getRecentTrades(),
     getOpenPositions(),
+    getTodaysTrades(),
   ])
 
   // Calculate aggregate stats
@@ -118,6 +136,10 @@ export default async function Dashboard() {
   const investedValue = openPositions.reduce((sum, p) => sum + p.currentValue, 0)
   const unrealizedPL = openPositions.reduce((sum, p) => sum + p.unrealizedPL, 0)
   const totalPortfolioValue = cashAvailable + investedValue
+
+  // Today's P&L from closed trades
+  const todayPL = todaysTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
+  const todayTradeCount = todaysTrades.length
 
   // Calculate per-strategy position values
   const positionValueByStrategy = new Map<string, number>()
@@ -169,7 +191,7 @@ export default async function Dashboard() {
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Aggregate Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-10 gap-4 mb-8">
           <div className="bg-white rounded-xl p-4 border border-slate-200">
             <div className="flex items-center gap-2 text-slate-600 text-sm mb-1">
               <DollarSign className="w-4 h-4" />
@@ -227,15 +249,25 @@ export default async function Dashboard() {
             </div>
             <div className="text-xs text-slate-500">{totalWins}W / {totalTrades - totalWins}L</div>
           </div>
+          <Link href="/today" className="bg-white rounded-xl p-4 border border-green-500/30 hover:border-green-500 hover:shadow-md transition-all cursor-pointer block">
+            <div className="flex items-center gap-2 text-green-600 text-sm mb-1">
+              <CalendarDays className="w-4 h-4" />
+              Today
+            </div>
+            <div className={`text-2xl font-bold ${todayPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {todayPL >= 0 ? '+' : ''}${todayPL.toFixed(0)}
+            </div>
+            <div className="text-xs text-slate-500">{todayTradeCount} trades closed →</div>
+          </Link>
           <div className="bg-white rounded-xl p-4 border border-yellow-500/30">
             <div className="flex items-center gap-2 text-yellow-600 text-sm mb-1">
               <Zap className="w-4 h-4" />
-              Daily Ret
+              Avg/Day
             </div>
             <div className={`text-2xl font-bold ${overallDailyReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
               {overallDailyReturn >= 0 ? '+' : ''}{overallDailyReturn.toFixed(2)}%
             </div>
-            <div className="text-xs text-slate-500">/day avg</div>
+            <div className="text-xs text-slate-500">historical</div>
           </div>
           <div className="bg-white rounded-xl p-4 border border-blue-800/50">
             <div className="flex items-center gap-2 text-blue-400 text-sm mb-1">
@@ -264,7 +296,7 @@ export default async function Dashboard() {
                   <th className="px-6 py-3 font-medium">Rank</th>
                   <th className="px-6 py-3 font-medium">Strategy</th>
                   <th className="px-6 py-3 font-medium text-right">P&L</th>
-                  <th className="px-6 py-3 font-medium text-right">Daily Ret</th>
+                  <th className="px-6 py-3 font-medium text-right">Avg/Day</th>
                   <th className="px-6 py-3 font-medium text-right">Win Rate</th>
                   <th className="px-6 py-3 font-medium text-right">Trades</th>
                   <th className="px-6 py-3 font-medium text-right">Cash</th>

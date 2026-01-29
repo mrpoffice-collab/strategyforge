@@ -89,45 +89,76 @@ interface YahooHistoricalRow {
   adjClose?: number
 }
 
-// Use Yahoo Finance for historical candles (Finnhub free tier doesn't include this)
+// In-memory cache for candles (survives within same serverless invocation)
+const candleCache = new Map<string, { data: StockCandle; timestamp: number }>()
+const CANDLE_CACHE_TTL = 60 * 60 * 1000 // 1 hour cache
+
+// Use Yahoo Finance for historical candles with retry logic
 export async function getCandles(
   symbol: string,
   resolution: '1' | '5' | '15' | '30' | '60' | 'D' | 'W' | 'M' = 'D',
   from: number,
   to: number
 ): Promise<StockCandle | null> {
-  try {
-    const fromDate = new Date(from * 1000)
-    const toDate = new Date(to * 1000)
-
-    // Use historical API which is more reliable
-    const result = await yahooFinance.historical(symbol, {
-      period1: fromDate,
-      period2: toDate,
-      interval: '1d',
-    }) as YahooHistoricalRow[]
-
-    if (!result || result.length === 0) {
-      console.log(`No Yahoo data for ${symbol}`)
-      return null
-    }
-
-    // Filter out any null values and convert to our format
-    const validData = result.filter(q => q.close !== null && q.close !== undefined)
-
-    return {
-      c: validData.map(q => q.close),
-      h: validData.map(q => q.high),
-      l: validData.map(q => q.low),
-      o: validData.map(q => q.open),
-      v: validData.map(q => q.volume),
-      t: validData.map(q => Math.floor(new Date(q.date).getTime() / 1000)),
-      s: 'ok',
-    }
-  } catch (error) {
-    console.error(`Error fetching Yahoo candles for ${symbol}:`, error instanceof Error ? error.message : error)
-    return null
+  // Check cache first
+  const cacheKey = `${symbol}-${resolution}`
+  const cached = candleCache.get(cacheKey)
+  if (cached && Date.now() - cached.timestamp < CANDLE_CACHE_TTL) {
+    return cached.data
   }
+
+  const maxRetries = 3
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Add delay between retries (exponential backoff)
+      if (attempt > 0) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)))
+      }
+
+      const fromDate = new Date(from * 1000)
+      const toDate = new Date(to * 1000)
+
+      const result = await yahooFinance.historical(symbol, {
+        period1: fromDate,
+        period2: toDate,
+        interval: '1d',
+      }) as YahooHistoricalRow[]
+
+      if (!result || result.length === 0) {
+        console.log(`No Yahoo data for ${symbol}`)
+        return null
+      }
+
+      const validData = result.filter(q => q.close !== null && q.close !== undefined)
+
+      const candles: StockCandle = {
+        c: validData.map(q => q.close),
+        h: validData.map(q => q.high),
+        l: validData.map(q => q.low),
+        o: validData.map(q => q.open),
+        v: validData.map(q => q.volume),
+        t: validData.map(q => Math.floor(new Date(q.date).getTime() / 1000)),
+        s: 'ok',
+      }
+
+      // Cache successful result
+      candleCache.set(cacheKey, { data: candles, timestamp: Date.now() })
+      return candles
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      // Check if rate limited
+      if (lastError.message.includes('Too Many Requests') || lastError.message.includes('429')) {
+        console.log(`Yahoo rate limited for ${symbol}, attempt ${attempt + 1}/${maxRetries}`)
+        continue
+      }
+      break // Don't retry non-rate-limit errors
+    }
+  }
+
+  console.error(`Error fetching Yahoo candles for ${symbol}:`, lastError?.message)
+  return null
 }
 
 export async function getCompanyProfile(symbol: string): Promise<CompanyProfile | null> {

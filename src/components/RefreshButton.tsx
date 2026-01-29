@@ -11,24 +11,53 @@ export function RefreshButton() {
 
   async function handleRefresh() {
     setRefreshing(true)
-    setStatus('Fetching live prices...')
 
     try {
-      // First update position prices from live market data
-      const res = await fetch('/api/positions/refresh', {
+      // Step 1: Ensure simulations are running
+      setStatus('Starting simulations...')
+      await fetch('/api/simulation/start', { method: 'POST', cache: 'no-store' })
+
+      // Step 2: Update position prices from live market data (Finnhub - reliable)
+      setStatus('Fetching live prices...')
+      const priceRes = await fetch('/api/positions/refresh', {
         method: 'POST',
         cache: 'no-store',
       })
-      const data = await res.json()
+      const priceData = await priceRes.json()
 
-      if (data.success) {
-        setStatus(`Updated ${data.updated} positions`)
-      } else {
-        setStatus('Price update failed')
-      }
+      // Step 3: Check exit conditions for existing positions
+      setStatus('Checking exits...')
+      const exitRes = await fetch('/api/simulation/check-exits', {
+        method: 'POST',
+        cache: 'no-store',
+      })
+      const exitData = await exitRes.json()
+
+      // Step 4: Process existing signals into new trades
+      setStatus('Processing signals...')
+      const signalRes = await fetch('/api/simulation/process-signals', {
+        method: 'POST',
+        cache: 'no-store',
+      })
+      const signalData = await signalRes.json()
+
+      // Show detailed summary - always show prices updated
+      const updates = []
+      if (priceData.updated > 0) updates.push(`${priceData.updated} prices`)
+      if (exitData.closedPositions > 0) updates.push(`${exitData.closedPositions} exits`)
+      if (signalData.tradesOpened > 0) updates.push(`${signalData.tradesOpened} trades`)
+
+      // Log detailed results to console for debugging
+      console.log('Refresh results:', {
+        prices: priceData,
+        exits: exitData,
+        signals: signalData,
+      })
+
+      setStatus(updates.length > 0 ? updates.join(', ') : 'Prices up to date')
 
       // Small delay to show status
-      await new Promise(resolve => setTimeout(resolve, 300))
+      await new Promise(resolve => setTimeout(resolve, 500))
 
       // Force Next.js to revalidate server components
       router.refresh()
