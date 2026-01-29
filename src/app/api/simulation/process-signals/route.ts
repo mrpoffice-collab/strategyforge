@@ -345,17 +345,17 @@ export async function POST(request: Request) {
       results.skipReasons['unmapped_strategy_keys'] = unmappedSignals
     }
 
-    // Cleanup: Mark very old signals (>7 days) as processed to prevent infinite buildup
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    // Cleanup: Mark very old signals (>30 days) as processed to prevent infinite buildup
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     const staleSignals = await prisma.screenerSignal.updateMany({
       where: {
         processed: false,
-        scannedAt: { lt: sevenDaysAgo },
+        scannedAt: { lt: thirtyDaysAgo },
       },
       data: { processed: true },
     })
     if (staleSignals.count > 0) {
-      console.log(`Cleaned up ${staleSignals.count} stale signals (>7 days old)`)
+      console.log(`Cleaned up ${staleSignals.count} stale signals (>30 days old)`)
       results.skipReasons['stale_signals_cleaned'] = staleSignals.count
     }
 
