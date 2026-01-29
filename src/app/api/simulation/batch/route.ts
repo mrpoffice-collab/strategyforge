@@ -22,8 +22,54 @@ export const maxDuration = 60
 interface StrategyMatch {
   strategyId: string
   strategyName: string
+  strategyKey: string
   simulationId: string
   reason: string
+}
+
+// Strategy name to key mapping (reverse of the pattern matching in scan route)
+function getStrategyKeyFromName(name: string): string | null {
+  const nameLower = name.toLowerCase()
+
+  if (nameLower.includes('rsi') && nameLower.includes('stochastic') && nameLower.includes('oversold')) {
+    return 'rsi_stochastic_oversold'
+  }
+  if (nameLower.includes('adx') && nameLower.includes('trend') && nameLower.includes('pullback')) {
+    return 'adx_trend_pullback'
+  }
+  if (nameLower.includes('bollinger') && nameLower.includes('squeeze')) {
+    return 'bollinger_squeeze'
+  }
+  if (nameLower.includes('macd') && nameLower.includes('bb') && nameLower.includes('volume')) {
+    return 'macd_bb_volume'
+  }
+  if (nameLower.includes('stochastic') && nameLower.includes('rsi') && nameLower.includes('sync')) {
+    return 'stochastic_rsi_sync'
+  }
+  if (nameLower.includes('rsi') && nameLower.includes('mean') && nameLower.includes('reversion')) {
+    return 'rsi_mean_reversion'
+  }
+  if (nameLower.includes('macd') && nameLower.includes('momentum')) {
+    return 'macd_momentum'
+  }
+  if (nameLower.includes('volume') && nameLower.includes('breakout')) {
+    return 'volume_breakout'
+  }
+  if (nameLower.includes('52') && nameLower.includes('week') && nameLower.includes('high')) {
+    return '52_week_high_breakout'
+  }
+  if (nameLower.includes('adx') && nameLower.includes('trend') && nameLower.includes('rider')) {
+    return 'adx_trend_rider'
+  }
+  if (nameLower.includes('triple') && nameLower.includes('ma') && nameLower.includes('trend')) {
+    return 'triple_ma_trend'
+  }
+  if (nameLower.includes('momentum') && nameLower.includes('persistence')) {
+    return 'momentum_persistence'
+  }
+
+  // Fallback: generate key from name
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 }
 
 // Check if a symbol matches ANY strategy's entry conditions
@@ -87,12 +133,16 @@ async function checkSymbolAgainstAllStrategies(
     }
 
     if (allMet && reasons.length > 0) {
-      matches.push({
-        strategyId: strategy.id,
-        strategyName: strategy.name,
-        simulationId: strategy.simulation.id,
-        reason: reasons.join(', '),
-      })
+      const strategyKey = getStrategyKeyFromName(strategy.name)
+      if (strategyKey) {
+        matches.push({
+          strategyId: strategy.id,
+          strategyName: strategy.name,
+          strategyKey,
+          simulationId: strategy.simulation.id,
+          reason: reasons.join(', '),
+        })
+      }
     }
   }
 
@@ -266,7 +316,7 @@ export async function POST(request: Request) {
     const results = {
       batch: batchNumber,
       symbolsProcessed: 0,
-      entriesCreated: 0,
+      signalsCreated: 0,
       exitsProcessed: 0,
       matches: [] as Array<{ symbol: string; strategy: string; action: string }>,
       errors: [] as string[],
@@ -371,6 +421,18 @@ export async function POST(request: Request) {
 
         results.symbolsProcessed++
 
+        // Pre-calculate indicators for use in signals
+        const indicators = {
+          rsi14: calculateRSI(candles.c, 14),
+          sma20: calculateSMA(candles.c, 20),
+          sma50: calculateSMA(candles.c, 50),
+          macd: calculateMACD(candles.c),
+          bbands: calculateBollingerBands(candles.c, 20, 2),
+          stoch: calculateStochastic(candles.h, candles.l, candles.c, 14, 3),
+          adx: calculateADX(candles.h, candles.l, candles.c, 14),
+          atr: calculateATR(candles.h, candles.l, candles.c, 14),
+        }
+
         // Check against ALL strategies at once
         const matches = await checkSymbolAgainstAllStrategies(
           stock.symbol,
@@ -382,57 +444,49 @@ export async function POST(request: Request) {
           strategiesWithSim
         )
 
-        // Execute trades for matches
+        // Create screener signals for matches (let process-signals handle trade creation)
         for (const match of matches) {
-          // Check if position already exists
-          const existing = await prisma.position.findUnique({
-            where: { simulationId_symbol: { simulationId: match.simulationId, symbol: stock.symbol } },
-          })
-          if (existing) continue
+          // Store indicators for the signal
+          const indicatorJson = {
+            rsi14: indicators.rsi14,
+            macd: indicators.macd?.macd,
+            macdSignal: indicators.macd?.signal,
+            stochK: indicators.stoch?.k,
+            stochD: indicators.stoch?.d,
+            adx: indicators.adx?.adx,
+            plusDI: indicators.adx?.plusDI,
+            minusDI: indicators.adx?.minusDI,
+            bbUpper: indicators.bbands?.upper,
+            bbMiddle: indicators.bbands?.middle,
+            bbLower: indicators.bbands?.lower,
+            sma20: indicators.sma20,
+            sma50: indicators.sma50,
+            atr14: indicators.atr,
+            matchReason: match.reason,
+          }
 
-          const sim = strategiesWithSim.find(s => s.id === match.strategyId)
-          if (!sim) continue
-
-          const positionValue = sim.simulation.currentCapital * (sim.positionSize / 100)
-          const shares = Math.floor(positionValue / price)
-          if (shares < 1) continue
-
-          const totalCost = shares * price
-
-          await prisma.position.create({
-            data: {
-              simulationId: match.simulationId,
+          // Upsert screener signal (will be picked up by process-signals route)
+          await prisma.screenerSignal.upsert({
+            where: {
+              symbol_strategyKey: { symbol: stock.symbol, strategyKey: match.strategyKey },
+            },
+            update: {
+              price,
+              indicators: indicatorJson,
+              processed: false, // Reset to unprocessed so it gets picked up
+              scannedAt: new Date(),
+            },
+            create: {
               symbol: stock.symbol,
-              shares,
-              entryPrice: price,
-              entryDate: new Date(),
-              currentPrice: price,
-              currentValue: totalCost,
-              unrealizedPL: 0,
-              unrealizedPLPercent: 0,
+              strategyKey: match.strategyKey,
+              strategyName: match.strategyName,
+              price,
+              indicators: indicatorJson,
             },
           })
 
-          await prisma.trade.create({
-            data: {
-              simulationId: match.simulationId,
-              strategyId: match.strategyId,
-              symbol: stock.symbol,
-              side: 'BUY',
-              entryDate: new Date(),
-              entryPrice: price,
-              shares,
-              totalCost,
-            },
-          })
-
-          await prisma.simulation.update({
-            where: { id: match.simulationId },
-            data: { currentCapital: { decrement: totalCost } },
-          })
-
-          results.entriesCreated++
-          results.matches.push({ symbol: stock.symbol, strategy: match.strategyName, action: 'BUY' })
+          results.signalsCreated++
+          results.matches.push({ symbol: stock.symbol, strategy: match.strategyName, action: 'SIGNAL_CREATED' })
         }
 
         // Rate limit
@@ -447,6 +501,7 @@ export async function POST(request: Request) {
       ...results,
       totalEligibleStocks: await prisma.stock.count({ where: { isEligible: true } }),
       strategiesActive: strategiesWithSim.length,
+      note: 'Signals created - run /api/simulation/process-signals to execute trades',
     })
   } catch (error) {
     console.error('Batch processing error:', error)

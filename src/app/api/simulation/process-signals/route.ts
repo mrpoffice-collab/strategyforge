@@ -23,21 +23,43 @@ function getMarketSession(): string {
 const MAX_SIGNALS_PER_RUN = 30
 const MAX_EXITS_PER_RUN = 15
 
-// Strategy key to database ID mapping
-const STRATEGY_KEY_MAP: Record<string, string> = {
-  'rsi_stochastic_oversold': 'strat_rsi_stochastic_double_oversold',
-  'adx_trend_pullback': 'strat_adx_trend_+_ma_pullback',
-  'bollinger_squeeze': 'strat_bollinger_squeeze_breakout',
-  'macd_bb_volume': 'strat_macd_bb_volume_triple_filter',
-  'stochastic_rsi_sync': 'strat_stochastic_rsi_momentum_sync',
-  'rsi_mean_reversion': 'strat_rsi_mean_reversion',
-  'macd_momentum': 'strat_macd_momentum_crossover',
-  'volume_breakout': 'strat_volume_breakout_scanner',
-  // Trend-following strategies
-  '52_week_high_breakout': 'cmjrkxxny00008sfmhyrvkbcs',
-  'adx_trend_rider': 'cmjrkxxtk00018sfm4vkptvmd',
-  'triple_ma_trend': 'cmjrkxxyc00028sfmj434l2m0',
-  'momentum_persistence': 'cmjrkxy3900038sfm5l2ldi05',
+// Strategy key patterns to match against strategy names (case-insensitive partial match)
+const STRATEGY_KEY_PATTERNS: Record<string, string[]> = {
+  'rsi_stochastic_oversold': ['rsi', 'stochastic', 'oversold'],
+  'adx_trend_pullback': ['adx', 'trend', 'pullback'],
+  'bollinger_squeeze': ['bollinger', 'squeeze'],
+  'macd_bb_volume': ['macd', 'bb', 'volume'],
+  'stochastic_rsi_sync': ['stochastic', 'rsi', 'sync'],
+  'rsi_mean_reversion': ['rsi', 'mean', 'reversion'],
+  'macd_momentum': ['macd', 'momentum'],
+  'volume_breakout': ['volume', 'breakout'],
+  '52_week_high_breakout': ['52', 'week', 'high'],
+  'adx_trend_rider': ['adx', 'trend', 'rider'],
+  'triple_ma_trend': ['triple', 'ma', 'trend'],
+  'momentum_persistence': ['momentum', 'persistence'],
+}
+
+// Build dynamic strategy mapping from database
+async function buildStrategyKeyMap(strategies: Array<{ id: string; name: string }>): Promise<Record<string, string>> {
+  const mapping: Record<string, string> = {}
+
+  for (const [key, patterns] of Object.entries(STRATEGY_KEY_PATTERNS)) {
+    // Find strategy whose name contains all patterns (case-insensitive)
+    const matchedStrategy = strategies.find(s => {
+      const nameLower = s.name.toLowerCase()
+      return patterns.every(p => nameLower.includes(p.toLowerCase()))
+    })
+    if (matchedStrategy) {
+      mapping[key] = matchedStrategy.id
+    }
+  }
+
+  return mapping
+}
+
+// Reverse lookup: get strategy key from strategy ID
+function getStrategyKeyById(strategyId: string, keyMap: Record<string, string>): string | undefined {
+  return Object.entries(keyMap).find(([_, id]) => id === strategyId)?.[0]
 }
 
 // POST /api/simulation/process-signals - Process screener signals into trades
@@ -46,10 +68,11 @@ export async function POST(request: Request) {
   let cronLogId: number | null = null
 
   try {
-    // Auth check
+    // Auth check - allow browser calls (no auth header) or valid cron calls
     const authHeader = request.headers.get('authorization')
     const expectedToken = process.env.CRON_SECRET
-    if (expectedToken && authHeader !== `Bearer ${expectedToken}`) {
+    // Only reject if auth header is present but wrong
+    if (authHeader && expectedToken && authHeader !== `Bearer ${expectedToken}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -192,6 +215,14 @@ export async function POST(request: Request) {
 
     console.log(`Found ${strategiesWithCapital.length} strategies with capital >= $100`)
 
+    // Build dynamic strategy key mapping
+    const allStrategies = await prisma.strategy.findMany({
+      where: { status: 'active' },
+      select: { id: true, name: true },
+    })
+    const STRATEGY_KEY_MAP = await buildStrategyKeyMap(allStrategies)
+    console.log(`Strategy key mapping: ${Object.keys(STRATEGY_KEY_MAP).length} strategies mapped`)
+
     // Process up to 5 signals per strategy (ensures fair distribution)
     const SIGNALS_PER_STRATEGY = 5
 
@@ -206,9 +237,9 @@ export async function POST(request: Request) {
       if (!simulation) continue
 
       // Find the strategy key for this strategy ID
-      const strategyKey = Object.entries(STRATEGY_KEY_MAP).find(([_, id]) => id === strategy.id)?.[0]
+      const strategyKey = getStrategyKeyById(strategy.id, STRATEGY_KEY_MAP)
       if (!strategyKey) {
-        console.log(`No screener key for strategy: ${strategy.name}`)
+        console.log(`No screener key for strategy: ${strategy.name} (id: ${strategy.id})`)
         continue
       }
 
@@ -229,29 +260,26 @@ export async function POST(request: Request) {
         if (Date.now() - startTime > 50000) break
 
         try {
-          // Check trade limit
+          // Check trade limit - DON'T mark as processed, maybe another strategy can use it
           if (simulation.tradesCompleted >= simulation.tradesLimit) {
             results.skipReasons['trade_limit_reached'] = (results.skipReasons['trade_limit_reached'] || 0) + 1
-            await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
             continue
           }
 
-          // Check existing position
+          // Check existing position - DON'T mark as processed, signal stays available
           const existingPosition = await prisma.position.findUnique({
             where: { simulationId_symbol: { simulationId: simulation.id, symbol: signal.symbol } },
           })
 
           if (existingPosition) {
             results.skipReasons['already_holding'] = (results.skipReasons['already_holding'] || 0) + 1
-            await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
             continue
           }
 
-          // Validate price
+          // Validate price - DON'T mark as processed, price may update later
           const price = signal.price
           if (!price || price < 25 || price > 100) {
             results.skipReasons['invalid_price'] = (results.skipReasons['invalid_price'] || 0) + 1
-            await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
             continue
           }
 
@@ -262,8 +290,7 @@ export async function POST(request: Request) {
           })
           if (!currentSim || currentSim.currentCapital < 100) {
             results.skipReasons['insufficient_capital'] = (results.skipReasons['insufficient_capital'] || 0) + 1
-            await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
-            break // Stop processing this strategy - it's out of money
+            break // Stop processing this strategy - it's out of money (signal stays unprocessed)
           }
 
           const positionValue = currentSim.currentCapital * (strategy.positionSize / 100)
@@ -273,8 +300,7 @@ export async function POST(request: Request) {
 
           if (totalCost > currentSim.currentCapital) {
             results.skipReasons['cost_exceeds_capital'] = (results.skipReasons['cost_exceeds_capital'] || 0) + 1
-            await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
-            break // Stop this strategy
+            break // Stop this strategy (signal stays unprocessed for retry)
           }
 
           // Execute trade
@@ -325,28 +351,36 @@ export async function POST(request: Request) {
           })
           results.signalsProcessed++
         } catch (err) {
+          // On error, DON'T mark signal as processed - it can be retried
           results.errors.push(`Signal ${signal.symbol}: ${err instanceof Error ? err.message : 'Unknown'}`)
-          try {
-            await prisma.screenerSignal.update({ where: { id: signal.id }, data: { processed: true } })
-          } catch {}
         }
       }
     }
 
-    // Also clean up signals for strategies without screener mappings
-    const unmappedSignals = await prisma.screenerSignal.findMany({
+    // Log unmapped signals for debugging (but DON'T mark them processed - they may be valid)
+    const unmappedSignals = await prisma.screenerSignal.count({
       where: {
         processed: false,
         strategyKey: { notIn: Object.keys(STRATEGY_KEY_MAP) },
       },
-      take: 50,
     })
-    if (unmappedSignals.length > 0) {
-      await prisma.screenerSignal.updateMany({
-        where: { id: { in: unmappedSignals.map(s => s.id) } },
-        data: { processed: true },
-      })
-      results.skipReasons['no_strategy_mapping'] = unmappedSignals.length
+    if (unmappedSignals > 0) {
+      console.log(`Warning: ${unmappedSignals} signals have unmapped strategy keys`)
+      results.skipReasons['unmapped_strategy_keys'] = unmappedSignals
+    }
+
+    // Cleanup: Mark very old signals (>7 days) as processed to prevent infinite buildup
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const staleSignals = await prisma.screenerSignal.updateMany({
+      where: {
+        processed: false,
+        scannedAt: { lt: sevenDaysAgo },
+      },
+      data: { processed: true },
+    })
+    if (staleSignals.count > 0) {
+      console.log(`Cleaned up ${staleSignals.count} stale signals (>7 days old)`)
+      results.skipReasons['stale_signals_cleaned'] = staleSignals.count
     }
 
     const durationMs = Date.now() - startTime
