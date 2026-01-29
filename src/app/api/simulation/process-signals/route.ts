@@ -219,12 +219,12 @@ export async function POST(request: Request) {
         continue
       }
 
-      // Get signals for THIS strategy
+      // Get signals for THIS strategy (look back 14 days for signals)
       const signals = await prisma.screenerSignal.findMany({
         where: {
           processed: false,
           strategyKey: strategyKey,
-          scannedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+          scannedAt: { gte: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) },
         },
         orderBy: { scannedAt: 'desc' },
         take: SIGNALS_PER_STRATEGY,
