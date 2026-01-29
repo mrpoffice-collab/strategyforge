@@ -50,7 +50,7 @@ model Simulation {
   totalPLPercent   Float      @default(0)
 
   tradesCompleted  Int        @default(0)
-  tradesLimit      Int        @default(200)
+  tradesLimit      Int        @default(500)
 
   winCount         Int        @default(0)
   lossCount        Int        @default(0)

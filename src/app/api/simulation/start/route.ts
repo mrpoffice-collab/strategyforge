@@ -40,7 +40,7 @@ export async function POST() {
           status: 'running',
           initialCapital: 2000,
           currentCapital: 2000,
-          tradesLimit: 200,
+          tradesLimit: 500,
         },
       })
 
